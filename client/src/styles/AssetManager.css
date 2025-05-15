@@ -1,0 +1,174 @@
+/* client/src/styles/AssetManager.css - Styles for the AssetManager component */
+
+.asset-manager {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.asset-manager h2 {
+  color: #333;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+.error-message {
+  background-color: #ffebee;
+  color: #c62828;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.preview-button,
+.upload-button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preview-button {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.upload-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.preview-button:hover {
+  background-color: #bbdefb;
+}
+
+.upload-button:hover {
+  background-color: #43a047;
+}
+
+.preview-button:disabled,
+.upload-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.placeholder-preview,
+.existing-assets {
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.placeholder-preview h3,
+.existing-assets h3 {
+  color: #333;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.preview-section {
+  margin-bottom: 2rem;
+}
+
+.preview-section h4 {
+  color: #555;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.asset-item {
+  background-color: white;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.asset-item:hover {
+  transform: translateY(-2px);
+}
+
+.asset-item img {
+  width: 100%;
+  height: 200px;
+  object-fit: contain;
+  background-color: #fafafa;
+  border-bottom: 1px solid #eee;
+}
+
+.asset-info {
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.asset-info span {
+  color: #333;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.delete-button {
+  padding: 0.5rem 1rem;
+  background-color: #ffebee;
+  color: #c62828;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.delete-button:hover {
+  background-color: #ffcdd2;
+}
+
+.asset-preview-section {
+  margin-bottom: 2rem;
+}
+
+.asset-preview-section h3 {
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .asset-manager {
+    padding: 1rem;
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .asset-item img {
+    height: 150px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .preview-button,
+  .upload-button {
+    width: 100%;
+  }
+} 

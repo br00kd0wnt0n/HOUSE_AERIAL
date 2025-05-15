@@ -1,0 +1,187 @@
+/* Placeholder App.css */ 
+
+/* App styles */
+.app {
+  min-height: 100vh;
+  background-color: #141414;
+  color: #fff;
+}
+
+/* Admin panel layout */
+.admin-container {
+  display: flex;
+  min-height: 100vh;
+  background-color: #141414;
+  position: relative;
+}
+
+.admin-content {
+  flex: 1;
+  margin-left: 250px; /* Width of the admin nav */
+  min-height: 100vh;
+  background-color: #141414;
+  overflow-y: auto;
+  position: relative;
+  width: calc(100% - 250px); /* Subtract nav width from total width */
+}
+
+/* Loading screen */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #141414;
+  color: #fff;
+}
+
+.netflix-spinner {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.netflix-spinner-inner {
+  width: 100%;
+  height: 100%;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-left-color: #e50914;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* No configuration message */
+.no-config-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  text-align: center;
+  background-color: #141414;
+  color: #fff;
+}
+
+.no-config-message h2 {
+  color: #e50914;
+  margin-bottom: 1rem;
+}
+
+.no-config-message p {
+  margin: 0.5rem 0;
+  color: #999;
+}
+
+/* Admin navigation */
+.admin-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 250px;
+  height: 100vh;
+  background-color: #141414;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2rem 0;
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.admin-nav-header {
+  padding: 0 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.admin-nav-header h2 {
+  color: #e50914;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.admin-nav-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-tab {
+  display: flex;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  color: #999;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.nav-tab:hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-tab.active {
+  color: #e50914;
+  background-color: rgba(229, 9, 20, 0.1);
+}
+
+.tab-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 1rem;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.assets-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8zm0 3h4v2h-4z'/%3E%3C/svg%3E");
+}
+
+.hotspots-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'/%3E%3C/svg%3E");
+}
+
+.playlists-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z'/%3E%3C/svg%3E");
+}
+
+.ui-assets-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z'/%3E%3C/svg%3E");
+}
+
+.admin-nav-footer {
+  position: absolute;
+  bottom: 2rem;
+  left: 0;
+  right: 0;
+  padding: 0 1.5rem;
+}
+
+.exit-admin-link {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  color: #999;
+  text-decoration: none;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.exit-admin-link:hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+} 
