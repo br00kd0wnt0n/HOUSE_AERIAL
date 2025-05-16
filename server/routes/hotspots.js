@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const hotspotController = require('../controllers/hotspotController');
+const hotspotController = require('../controllers/hotspotcontroller');
 
 // Routes
 router.get('/', hotspotController.getHotspots);

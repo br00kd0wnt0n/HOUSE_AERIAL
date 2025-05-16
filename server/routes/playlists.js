@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const playlistController = require('../controllers/playlistController');
+const playlistController = require('../controllers/playlistcontroller');
 
 // Routes
 router.get('/', playlistController.getPlaylists);
