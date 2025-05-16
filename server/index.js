@@ -20,6 +20,11 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Add a simple health check endpoint for Railway
+app.get('/', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // MongoDB setup
 mongoose.set('strictQuery', true);
 
@@ -59,13 +64,28 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  process.exit(0);
+});
+
 // Start server
 const PORT = process.env.PORT || 3001;
 const startServer = async () => {
   await connectDB();
-  app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running at http://0.0.0.0:${PORT}`);
   });
+
+  // Increase the keep-alive timeout to be higher than Railway's idle timeout (60s)
+  server.keepAliveTimeout = 65000; // 65 seconds
+  server.headersTimeout = 66000; // 66 seconds
 };
 
 startServer().catch(console.error);
