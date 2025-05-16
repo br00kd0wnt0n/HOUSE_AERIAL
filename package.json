@@ -7,7 +7,9 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "dev": "./node_modules/.bin/nodemon server/index.js"
+    "dev": "./node_modules/.bin/nodemon server/index.js",
+    "build": "cd client && npm install && npm run build && cd .. && npm install",
+    "railway:prepare": "mkdir -p server/storage/uploads/AERIAL server/storage/uploads/Button server/storage/uploads/DiveIn server/storage/uploads/FloorLevel server/storage/uploads/MapPin server/storage/uploads/Transition server/storage/uploads/UIElement server/storage/uploads/ZoomOut"
   },
   "dependencies": {
     "classnames": "^2.5.1",

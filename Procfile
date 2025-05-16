@@ -1,0 +1,1 @@
+web: npm run railway:prepare && NODE_ENV=production npm start 

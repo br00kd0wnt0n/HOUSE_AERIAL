@@ -39,6 +39,20 @@ app.use('/api/assets', require('./routes/assets'));
 app.use('/api/hotspots', require('./routes/hotspots'));
 app.use('/api/playlists', require('./routes/playlists'));
 
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'storage/uploads')));
+
+// Serve React client build files in production
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the React client build directory
+  app.use(express.static(path.join(__dirname, '../client/build')));
+  
+  // For any request not matching an API route, serve the React app
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+  });
+}
+
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
