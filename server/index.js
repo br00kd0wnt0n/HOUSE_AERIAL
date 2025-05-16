@@ -60,6 +60,10 @@ app.get('/health', (req, res) => {
   res.status(200).send('Health OK');
 });
 
+app.post('/health', (req, res) => {
+  res.status(200).send('Health OK');
+});
+
 app.get('/', (req, res) => {
   res.status(200).send('Netflix House Aerial Experience API');
 });
@@ -116,6 +120,9 @@ process.on('SIGINT', () => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
+console.log('⚠️ Using PORT:', PORT);
+console.log('⚠️ PORT environment variable:', process.env.PORT);
+
 const startServer = async () => {
   await connectDB();
   const server = app.listen(PORT, '0.0.0.0', () => {

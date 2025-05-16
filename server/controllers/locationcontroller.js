@@ -1,6 +1,6 @@
 // server/controllers/locationcontroller.js - Location management controller
 
-const Location = require('../models/Location');
+const Location = require('../models/location');
 const Hotspot = require('../models/hotspot');
 const Playlist = require('../models/playlist');
 const Asset = require('../models/asset');
