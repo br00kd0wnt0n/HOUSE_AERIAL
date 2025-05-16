@@ -11,6 +11,41 @@ console.log('Environment check:');
 console.log('MONGODB_URI exists:', !!process.env.MONGODB_URI);
 console.log('PORT:', process.env.PORT || 3001);
 console.log('Current directory:', __dirname);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
+// Create uploads directory structure if it doesn't exist
+const createUploadDirectories = () => {
+  const directories = [
+    'AERIAL', 'Button', 'DiveIn', 'FloorLevel', 
+    'MapPin', 'Transition', 'UIElement', 'ZoomOut'
+  ];
+  
+  const uploadsDir = path.join(__dirname, 'storage/uploads');
+  
+  // Create base uploads directory
+  if (!fs.existsSync(uploadsDir)) {
+    console.log(`Creating base uploads directory: ${uploadsDir}`);
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  
+  // Create subdirectories
+  directories.forEach(dir => {
+    const fullPath = path.join(uploadsDir, dir);
+    if (!fs.existsSync(fullPath)) {
+      console.log(`Creating directory: ${fullPath}`);
+      fs.mkdirSync(fullPath, { recursive: true });
+    }
+  });
+  
+  console.log('Upload directories verified/created');
+};
+
+// Create directories at startup
+try {
+  createUploadDirectories();
+} catch (err) {
+  console.error('Error creating upload directories:', err);
+}
 
 const app = express();
 
@@ -20,9 +55,13 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Add a simple health check endpoint for Railway
+// Health check endpoints
+app.get('/health', (req, res) => {
+  res.status(200).send('Health OK');
+});
+
 app.get('/', (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).send('Netflix House Aerial Experience API');
 });
 
 // MongoDB setup
@@ -80,7 +119,7 @@ const PORT = process.env.PORT || 3001;
 const startServer = async () => {
   await connectDB();
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://0.0.0.0:${PORT}`);
+    console.log(`✅ Server running at http://0.0.0.0:${PORT}`);
   });
 
   // Increase the keep-alive timeout to be higher than Railway's idle timeout (60s)
