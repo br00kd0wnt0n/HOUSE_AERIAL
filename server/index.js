@@ -3,6 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
+const fs = require('fs');
+const path = require('path');
 
 // Debug: Log environment variables (excluding sensitive data)
 console.log('Environment check:');

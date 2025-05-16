@@ -1,0 +1,61 @@
+---
+description: Actor workflow (triggered by /act)
+manual: true
+---
+
+# Act Mode
+
+## Workflow Overview
+
+Act Mode is focused on executing specific tasks with precision in the Netflix House Aerial Experience project. It follows a structured approach to ensure tasks are completed correctly and documentation is kept up-to-date.
+
+## Process Steps
+
+### 1. Check Memory Bank
+
+Start by reviewing the Memory Bank to understand:
+- Project context and architecture
+- Current focus and priorities
+- Existing patterns and conventions
+- Known issues and blockers
+
+### 2. Update Documentation (If Needed)
+
+Based on the review:
+- Check if documentation is current and accurate
+- Update any outdated information in relevant files
+- Add new insights discovered during implementation
+- Document any decisions made during the process
+
+### 3. Update Project Rules (If Needed)
+
+If new patterns or conventions emerge:
+- Update the appropriate rule files in `.cursor/rules/`
+- Ensure rule files follow the YAML front matter format
+- Keep rule files concise (≤ 600 tokens)
+- Move complex documentation to the Memory Bank
+
+### 4. Execute Task
+
+Implement the requested changes:
+- Follow established patterns and conventions
+- Make atomic, focused changes
+- Use appropriate tools (file editing, terminal commands)
+- Test changes to ensure they work as expected
+- Follow the project's design patterns and coding style
+
+### 5. Document Changes
+
+After completion:
+- Update `progress.md` with new achievements
+- Update `activeContext.md` if focus has shifted
+- Document any new patterns in `systemPatterns.md`
+- Record any new technical details in `techContext.md`
+
+### 6. Verify Implementation
+
+Before considering the task complete:
+- Confirm all requirements have been met
+- Verify code follows project conventions
+- Check for any unintended side effects
+- Ensure documentation is up-to-date 

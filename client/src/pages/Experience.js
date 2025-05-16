@@ -11,6 +11,9 @@ import VideoLoader from '../utils/videoLoader';
 import api from '../utils/api';
 import '../styles/Experience.css';
 
+// Get API base URL from environment or use a default
+const API_BASE_URL = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:3001';
+
 const Experience = () => {
   const { locationId } = useParams();
   const navigate = useNavigate();
@@ -38,12 +41,21 @@ const Experience = () => {
   const maxRetries = 3;
   const retryDelay = 1000; // 1 second
   
-  // Add asset loading state
-  const [loadedAssets, setLoadedAssets] = useState({
+  // Use ref to track loaded assets without triggering re-renders
+  const loadedAssetsRef = useRef({
     diveIn: false,
     floorLevel: false,
     zoomOut: false,
     button: false
+  });
+  
+  // Debug states - only used for debugging, can be safely commented out for production
+  // eslint-disable-next-line no-unused-vars
+  const [debugInfo, setDebugInfo] = useState({
+    currentLocationId: null,
+    hotspotCount: 0,
+    hasAerialVideo: false,
+    videoUrl: null
   });
   
   // Video loader reference
@@ -57,42 +69,75 @@ const Experience = () => {
   useEffect(() => {
     if (!locations.length) return;
     
+    console.log('Locations available:', locations);
+    console.log('Current locationId from URL:', locationId);
+    
     const location = locations.find(loc => loc._id === locationId);
     if (location) {
+      console.log('Found matching location:', location.name);
       setCurrentLocation(location);
+      
+      // Update debug info
+      setDebugInfo(prev => ({
+        ...prev,
+        currentLocationId: location._id
+      }));
+      
       // Reset retry count when location changes
       setRetryCount(0);
-      setLoadedAssets({
+      
+      // Reset the ref for loaded assets
+      loadedAssetsRef.current = {
         diveIn: false,
         floorLevel: false,
         zoomOut: false,
         button: false
-      });
+      };
     } else if (locations.length > 0) {
+      console.log('No matching location found, defaulting to first location');
       navigate(`/experience/${locations[0]._id}`);
     }
   }, [locationId, locations, setCurrentLocation, navigate]);
   
   // Update video assets when context data changes
   useEffect(() => {
-    if (!aerialVideo && !transitionVideo) return;
+    if (!aerialVideo && !transitionVideo) {
+      console.log('No aerial or transition video available yet');
+      return;
+    }
     
-    setVideoAssets(prev => {
-      // Only update if we have new data
-      if (prev?.aerial?.s3Key === aerialVideo?.s3Key && 
-          prev?.transition?.s3Key === transitionVideo?.s3Key) {
-        return prev;
-      }
+    console.log('Aerial video:', aerialVideo);
+    console.log('Transition video:', transitionVideo);
+    
+    // Always update videoAssets when we have aerialVideo and transitionVideo
+    // Use functional update to avoid dependency on videoAssets
+    setVideoAssets(prev => ({
+      aerial: aerialVideo,
+      transition: transitionVideo,
+      diveIn: prev?.diveIn || [],
+      floorLevel: prev?.floorLevel || [],
+      zoomOut: prev?.zoomOut || []
+    }));
       
-      return {
-        aerial: aerialVideo,
-        transition: transitionVideo,
-        diveIn: prev?.diveIn || [],
-        floorLevel: prev?.floorLevel || [],
-        zoomOut: prev?.zoomOut || []
-      };
-    });
+    // Update debug info
+    setDebugInfo(prev => ({
+      ...prev,
+      hasAerialVideo: !!aerialVideo,
+      videoUrl: aerialVideo?.accessUrl
+    }));
+    
   }, [aerialVideo, transitionVideo]);
+  
+  // Update hotspot debug info
+  useEffect(() => {
+    if (hotspots && hotspots.length) {
+      console.log('Hotspots available:', hotspots);
+      setDebugInfo(prev => ({
+        ...prev,
+        hotspotCount: hotspots.length
+      }));
+    }
+  }, [hotspots]);
   
   // Load additional assets with retry logic
   useEffect(() => {
@@ -101,13 +146,14 @@ const Experience = () => {
     
     const loadAssetWithRetry = async (assetType, locationId = null) => {
       try {
+        console.log(`Loading ${assetType} assets for location:`, locationId);
         const response = await api.getAssetsByType(assetType, locationId);
         if (!isMounted) return;
         
-        setLoadedAssets(prev => ({
-          ...prev,
-          [assetType.toLowerCase()]: true
-        }));
+        console.log(`Loaded ${assetType} assets:`, response.data);
+        
+        // Update ref without triggering re-renders
+        loadedAssetsRef.current[assetType.toLowerCase()] = true;
         
         return response.data;
       } catch (error) {
@@ -128,7 +174,29 @@ const Experience = () => {
     };
     
     const loadAdditionalAssets = async () => {
-      if (!locationId || contextLoading || !videoAssets?.aerial) return;
+      // Use aerialVideo directly from context instead of videoAssets.aerial
+      if (!locationId || contextLoading || !aerialVideo) {
+        console.log('Not ready to load additional assets yet');
+        return;
+      }
+      
+      // Skip if we've already loaded all assets - check the ref instead of state
+      if (loadedAssetsRef.current.diveIn && loadedAssetsRef.current.floorLevel && 
+          loadedAssetsRef.current.zoomOut && loadedAssetsRef.current.button) {
+        console.log('All assets already loaded, skipping additional loading');
+        
+        // If we have all assets loaded but aren't showing the video yet, set loading to false
+        if (isLoading) {
+          setIsLoading(false);
+          
+          // Start with aerial video if not already set
+          if (!currentVideo) {
+            console.log('Setting current video to aerial');
+            setCurrentVideo('aerial');
+          }
+        }
+        return;
+      }
       
       try {
         if (isMounted) {
@@ -137,40 +205,73 @@ const Experience = () => {
         
         // Load assets in parallel with retry logic
         const [diveInAssets, floorLevelAssets, zoomOutAssets, buttonAssets] = await Promise.all([
-          !loadedAssets.diveIn ? loadAssetWithRetry('DiveIn', locationId) : Promise.resolve(videoAssets.diveIn || []),
-          !loadedAssets.floorLevel ? loadAssetWithRetry('FloorLevel', locationId) : Promise.resolve(videoAssets.floorLevel || []),
-          !loadedAssets.zoomOut ? loadAssetWithRetry('ZoomOut', locationId) : Promise.resolve(videoAssets.zoomOut || []),
-          !loadedAssets.button ? loadAssetWithRetry('Button') : Promise.resolve(locationButtons)
+          !loadedAssetsRef.current.diveIn ? loadAssetWithRetry('DiveIn', locationId) : Promise.resolve([]),
+          !loadedAssetsRef.current.floorLevel ? loadAssetWithRetry('FloorLevel', locationId) : Promise.resolve([]),
+          !loadedAssetsRef.current.zoomOut ? loadAssetWithRetry('ZoomOut', locationId) : Promise.resolve([]),
+          !loadedAssetsRef.current.button ? loadAssetWithRetry('Button') : Promise.resolve([])
         ]);
         
         if (!isMounted) return;
         
-        // Update video assets state
-        setVideoAssets(prev => ({
-          ...prev,
-          diveIn: diveInAssets,
-          floorLevel: floorLevelAssets,
-          zoomOut: zoomOutAssets
-        }));
+        // Update video assets state only when we receive new data
+        if (diveInAssets.length > 0 || floorLevelAssets.length > 0 || zoomOutAssets.length > 0) {
+          setVideoAssets(prev => ({
+            ...(prev || {}),
+            aerial: aerialVideo, // Always use the latest aerial video
+            transition: transitionVideo, // Always use the latest transition video
+            diveIn: diveInAssets.length > 0 ? diveInAssets : (prev?.diveIn || []),
+            floorLevel: floorLevelAssets.length > 0 ? floorLevelAssets : (prev?.floorLevel || []),
+            zoomOut: zoomOutAssets.length > 0 ? zoomOutAssets : (prev?.zoomOut || [])
+          }));
+        }
         
-        setLocationButtons(buttonAssets);
+        if (buttonAssets && buttonAssets.length > 0) {
+          // Organize buttons by location and state (ON/OFF)
+          const buttonsMap = {};
+          
+          buttonAssets.forEach(asset => {
+            if (!asset.location || !asset.location._id) return;
+            
+            const locationId = asset.location._id;
+            
+            if (!buttonsMap[locationId]) {
+              buttonsMap[locationId] = { 
+                normal: null,  // OFF button
+                hover: null    // ON button
+              };
+            }
+            
+            // Determine button state from name
+            if (asset.name.endsWith('_Button_ON')) {
+              buttonsMap[locationId].hover = asset.accessUrl;
+            } else if (asset.name.endsWith('_Button_OFF')) {
+              buttonsMap[locationId].normal = asset.accessUrl;
+            }
+          });
+          
+          console.log('Organized button assets by location:', buttonsMap);
+          setLocationButtons(buttonsMap);
+        }
         
         // Preload all video assets
         const loader = videoLoader.current;
         loader.clear();
         
         // Add aerial video to loader if not already loaded
-        if (videoAssets.aerial && !loader.isLoaded('aerial')) {
-          loader.add('aerial', videoAssets.aerial.s3Key);
+        if (aerialVideo && !loader.isLoaded('aerial')) {
+          console.log('Adding aerial video to loader:', aerialVideo.accessUrl);
+          loader.add('aerial', aerialVideo.accessUrl);
         }
         
         // Add transition video to loader if not already loaded
-        if (videoAssets.transition && !loader.isLoaded('transition')) {
-          loader.add('transition', videoAssets.transition.s3Key);
+        if (transitionVideo && !loader.isLoaded('transition')) {
+          console.log('Adding transition video to loader:', transitionVideo.accessUrl);
+          loader.add('transition', transitionVideo.accessUrl);
         }
         
         // Add playlist videos to loader (for primary hotspots)
         const primaryHotspots = hotspots.filter(hotspot => hotspot.type === 'PRIMARY');
+        console.log('Primary hotspots to load playlists for:', primaryHotspots);
         
         for (const hotspot of primaryHotspots) {
           try {
@@ -178,18 +279,22 @@ const Experience = () => {
             if (!isMounted) return;
             
             const playlist = playlistResponse.data;
+            console.log(`Loaded playlist for hotspot ${hotspot._id}:`, playlist);
             const hotspotId = hotspot._id;
             
-            if (playlist.sequence.diveInVideo && !loader.isLoaded(`diveIn_${hotspotId}`)) {
-              loader.add(`diveIn_${hotspotId}`, playlist.sequence.diveInVideo.s3Key);
+            if (playlist?.sequence?.diveInVideo && !loader.isLoaded(`diveIn_${hotspotId}`)) {
+              console.log('Adding diveIn video to loader:', playlist.sequence.diveInVideo.accessUrl);
+              loader.add(`diveIn_${hotspotId}`, playlist.sequence.diveInVideo.accessUrl);
             }
             
-            if (playlist.sequence.floorLevelVideo && !loader.isLoaded(`floorLevel_${hotspotId}`)) {
-              loader.add(`floorLevel_${hotspotId}`, playlist.sequence.floorLevelVideo.s3Key);
+            if (playlist?.sequence?.floorLevelVideo && !loader.isLoaded(`floorLevel_${hotspotId}`)) {
+              console.log('Adding floorLevel video to loader:', playlist.sequence.floorLevelVideo.accessUrl);
+              loader.add(`floorLevel_${hotspotId}`, playlist.sequence.floorLevelVideo.accessUrl);
             }
             
-            if (playlist.sequence.zoomOutVideo && !loader.isLoaded(`zoomOut_${hotspotId}`)) {
-              loader.add(`zoomOut_${hotspotId}`, playlist.sequence.zoomOutVideo.s3Key);
+            if (playlist?.sequence?.zoomOutVideo && !loader.isLoaded(`zoomOut_${hotspotId}`)) {
+              console.log('Adding zoomOut video to loader:', playlist.sequence.zoomOutVideo.accessUrl);
+              loader.add(`zoomOut_${hotspotId}`, playlist.sequence.zoomOutVideo.accessUrl);
             }
           } catch (error) {
             console.error(`Error loading playlist for hotspot ${hotspot._id}:`, error);
@@ -198,6 +303,7 @@ const Experience = () => {
         }
         
         // Start preloading all videos
+        console.log('Starting preload of all videos');
         await loader.preloadAll();
         
         if (isMounted) {
@@ -205,6 +311,7 @@ const Experience = () => {
           
           // Start with aerial video if not already set
           if (!currentVideo) {
+            console.log('Setting current video to aerial');
             setCurrentVideo('aerial');
           }
         }
@@ -224,11 +331,13 @@ const Experience = () => {
         clearTimeout(retryTimeout);
       }
     };
-  }, [locationId, contextLoading, videoAssets, hotspots, currentVideo, setCurrentVideo, retryCount, loadedAssets]);
+  }, [locationId, contextLoading, aerialVideo, transitionVideo, hotspots, 
+      currentVideo, setCurrentVideo, retryCount, isLoading]);
   
   // Handle location change
   const handleLocationChange = (newLocationId) => {
     // Play transition video first
+    console.log(`Changing location to: ${newLocationId}`);
     setCurrentVideo('transition');
     
     // Wait for transition video to finish
@@ -238,11 +347,14 @@ const Experience = () => {
   };
   
   // Only render VideoPlayer when we have the necessary assets
-  if (!videoAssets?.aerial) {
+  // Use aerialVideo directly from context instead of videoAssets.aerial
+  if (!aerialVideo) {
+    console.log('No aerial video available yet, showing loading spinner');
     return <LoadingSpinner />;
   }
   
   // Get current location
+  // eslint-disable-next-line no-unused-vars
   const currentLocation = locations.find(loc => loc._id === locationId);
   
   // Get other location buttons
@@ -251,21 +363,33 @@ const Experience = () => {
   // Render location navigation button
   const renderLocationButton = (location, index) => {
     const buttonPosition = index === 0 ? 'left' : 'right';
-    const buttonAsset = locationButtons.find(
-      button => button.name.includes(location.name)
-    );
+    const buttonAsset = locationButtons[location._id];
+    const hasButtonImage = buttonAsset && (buttonAsset.normal || buttonAsset.hover);
     
     return (
       <button
         key={location._id}
-        className={`location-nav-button ${buttonPosition}`}
+        className={`location-nav-button ${buttonPosition} ${hasButtonImage ? 'has-image' : ''}`}
         onClick={() => handleLocationChange(location._id)}
       >
-        {buttonAsset?.s3Key ? (
+        {hasButtonImage ? (
           <img 
-            src={buttonAsset.s3Key} 
+            src={buttonAsset.normal ? 
+              `${API_BASE_URL}${buttonAsset.normal}` : 
+              `${API_BASE_URL}${buttonAsset.hover}`
+            } 
             alt={location.name} 
             className="nav-button-image" 
+            onMouseOver={(e) => {
+              if (buttonAsset.hover) {
+                e.target.src = `${API_BASE_URL}${buttonAsset.hover}`;
+              }
+            }}
+            onMouseOut={(e) => {
+              if (buttonAsset.normal) {
+                e.target.src = `${API_BASE_URL}${buttonAsset.normal}`;
+              }
+            }}
           />
         ) : (
           <div className="nav-button-text-container">
@@ -298,10 +422,9 @@ const Experience = () => {
       />
       
       {/* Hotspot overlay (only visible when showing aerial view) */}
-      {currentVideo === 'aerial' && (
+      {currentVideo === 'aerial' && !isLoading && (
         <HotspotOverlay 
           hotspots={hotspots} 
-          locationId={locationId}
         />
       )}
       

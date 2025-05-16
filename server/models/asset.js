@@ -12,9 +12,14 @@ const AssetSchema = new mongoose.Schema({
     required: true,
     enum: ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition', 'Button', 'MapPin', 'UIElement']
   },
-  s3Key: {
+  filePath: {
     type: String,
-    required: true
+    required: true, // Full path to the file in the filesystem
+    unique: true
+  },
+  accessUrl: {
+    type: String,
+    required: true // URL to access the file via the API
   },
   fileType: {
     type: String,

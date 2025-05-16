@@ -1,4 +1,4 @@
-/* Placeholder AdminPages.css */ 
+/* Placeholder AdminPages.css */
 
 /* Admin panel styles */
 .admin-page {
@@ -239,6 +239,36 @@
   cursor: not-allowed;
 }
 
+/* Bulk Actions */
+.bulk-actions {
+  margin-top: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.delete-all-button {
+  background-color: #e50914;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.delete-all-button:hover {
+  background-color: #f40612;
+}
+
+.delete-all-button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
 /* Save status */
 .save-status {
   position: fixed;
@@ -306,4 +336,4 @@
   text-align: center;
   color: #999;
   font-style: italic;
-} 
+}

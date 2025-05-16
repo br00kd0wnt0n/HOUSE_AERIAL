@@ -1,9 +1,12 @@
 // client/src/utils/videoLoader.js - Utility for preloading videos
 import axios from 'axios';
 
+// Base URL without /api/ suffix
+const BASE_URL = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:3001';
+
 // Create axios instance for video preloading
 const videoAxios = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
+  baseURL: BASE_URL,
   responseType: 'blob',
   timeout: 30000, // 30 seconds
   headers: {
@@ -13,16 +16,19 @@ const videoAxios = axios.create({
 
 // Add request interceptor for logging
 videoAxios.interceptors.request.use(request => {
-  // Remove baseURL from the URL if it's already included
-  const url = request.url.startsWith(request.baseURL) 
-    ? request.url.slice(request.baseURL.length) 
-    : request.url;
+  // Process URL to avoid duplicate /api/ prefixes
+  let url = request.url;
+  
+  // Ensure URL starts with /api/ but only once
+  if (!url.startsWith('/api/') && !url.startsWith('http')) {
+    url = url.startsWith('/') ? `/api${url}` : `/api/${url}`;
+  }
   
   console.log('VideoLoader making request to:', url);
-  console.log('VideoLoader full URL:', request.baseURL + url);
+  console.log('VideoLoader full URL:', BASE_URL + url);
   console.log('VideoLoader request headers:', request.headers);
   
-  // Update the request URL to avoid double baseURL
+  // Update the request URL 
   request.url = url;
   return request;
 });

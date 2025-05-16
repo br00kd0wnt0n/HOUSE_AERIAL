@@ -10,12 +10,16 @@ export function useAdmin() {
 }
 
 export function AdminProvider({ children }) {
+  console.log('[AdminProvider] Initializing / Re-rendering');
   // Locations state
   const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState(null);
   
+  // Tracking state for loaded locations
+  const [fetchedLocationIds, setFetchedLocationIds] = useState(new Set());
+  
   // Assets state
-  const [assets, setAssets] = useState([]);
+  const [assets, setAssets] = useState([]); // Holds all assets fetched so far, across locations
   const [assetsByType, setAssetsByType] = useState({
     AERIAL: [],
     DiveIn: [],
@@ -28,27 +32,24 @@ export function AdminProvider({ children }) {
   });
   
   // Hotspots state
-  const [hotspots, setHotspots] = useState([]);
+  const [hotspots, setHotspots] = useState([]); // Holds all hotspots fetched
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [drawingMode, setDrawingMode] = useState(false);
   
   // Playlists state
-  const [playlists, setPlaylists] = useState([]);
+  const [playlists, setPlaylists] = useState([]); // Holds all playlists fetched
   
   // Loading states
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [isFetchingLocationData, setIsFetchingLocationData] = useState(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState({ success: false, message: '' });
   
-  // Add fetchInProgress state
-  const [fetchInProgress, setFetchInProgress] = useState(false);
-  
-  // Add retry configuration
   const MAX_RETRIES = 3;
-  const RETRY_DELAY = 1000; // 1 second
+  const RETRY_DELAY = 1000;
 
-  // Add retry utility
-  const retryWithBackoff = async (fn, retries = MAX_RETRIES) => {
+  const retryWithBackoff = useCallback(async (fn, retries = MAX_RETRIES) => {
     try {
       return await fn();
     } catch (error) {
@@ -59,245 +60,165 @@ export function AdminProvider({ children }) {
       }
       throw error;
     }
-  };
+  }, []);
 
-  // Modify fetchLocations to use retry logic
   const fetchLocations = useCallback(async () => {
-    setIsLoading(true);
+    setIsLoadingLocations(true);
+    console.log('[AdminProvider] fetchLocations called.');
     try {
       const response = await retryWithBackoff(() => api.getLocations());
-      console.log('Locations response:', response.data);
-      setLocations(prevLocations => {
-        if (JSON.stringify(prevLocations) !== JSON.stringify(response.data)) {
-          // Select first location by default if none selected or if changed
-          if (response.data.length > 0 && (!selectedLocation || selectedLocation._id !== response.data[0]._id)) {
-            console.log('Setting default location:', response.data[0]);
-            setSelectedLocation(response.data[0]);
-          }
-          return response.data;
-        }
-        return prevLocations;
-      });
+      console.log('[AdminProvider] Locations API response:', response.data.length);
+      setLocations(response.data);
+      if (response.data.length > 0 && !selectedLocation) {
+         // Set selectedLocation only if it's not already set by another interaction
+        console.log('[AdminProvider] Setting default selectedLocation:', response.data[0].name);
+        setSelectedLocation(response.data[0]);
+      }
     } catch (error) {
       console.error('Error fetching locations:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Failed to load locations: ${error.message}. Please refresh the page.` 
-      });
+      setSaveStatus({ success: false, message: `Failed to load locations: ${error.message}.` });
     } finally {
-      setIsLoading(false);
+      setIsLoadingLocations(false);
+      console.log('[AdminProvider] fetchLocations finished.');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedLocation, retryWithBackoff]); // Depend on selectedLocation to avoid re-setting it if already set.
 
-  // Modify fetchAssets to use retry logic
-  const fetchAssets = useCallback(async (locationId) => {
-    if (!locationId || isLoading || fetchInProgress) {
-      console.log('Skipping asset fetch:', { locationId, isLoading, fetchInProgress });
-      return;
-    }
-
-    // Check if we already have assets for this location
-    const existingAssets = assets.filter(asset => asset.location?._id === locationId);
-    if (existingAssets.length > 0) {
-      console.log('Assets already loaded for location:', locationId);
-      return;
-    }
-
-    setFetchInProgress(true);
+  const fetchAssetsForLocation = useCallback(async (locationId) => {
+    if (!locationId) return;
+    console.log(`[AdminProvider] fetchAssetsForLocation called for ${locationId}.`);
+    // No direct dependency on 'assets' state here to avoid loops
     try {
-      console.log('Fetching assets for location:', locationId);
       const response = await retryWithBackoff(() => api.getAssets(null, locationId));
-      console.log('Assets response:', {
-        count: response.data.length,
-        assets: response.data.map(a => ({ id: a._id, type: a.type, name: a.name }))
-      });
-      
-      // Ensure assets have location data populated
-      const assetsWithLocation = response.data.map(asset => ({
-        ...asset,
-        location: asset.location || { _id: locationId }
-      }));
-      
+      console.log(`[AdminProvider] Assets API response for ${locationId}:`, response.data.length);
+      // Merge new assets with existing, replacing if IDs match, to build a cumulative list
       setAssets(prevAssets => {
-        if (JSON.stringify(prevAssets) !== JSON.stringify(assetsWithLocation)) {
-          console.log('Updating assets state with new assets');
-          return assetsWithLocation;
-        }
-        console.log('Assets unchanged, not updating state');
-        return prevAssets;
-      });
-    } catch (error) {
-      console.error('Error fetching assets:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Failed to load assets: ${error.message}. Please try again.` 
-      });
-    } finally {
-      setFetchInProgress(false);
-    }
-  }, [isLoading, fetchInProgress, assets]);
-
-  // Modify fetchHotspots to use retry logic
-  const fetchHotspots = useCallback(async (locationId) => {
-    if (!locationId) {
-      console.log('No location ID provided, skipping hotspot fetch');
-      return;
-    }
-
-    try {
-      console.log('Fetching hotspots for location:', locationId);
-      const response = await retryWithBackoff(() => api.getHotspotsByLocation(locationId));
-      console.log('Hotspots response:', response.data);
-      
-      setHotspots(prevHotspots => {
-        if (JSON.stringify(prevHotspots) !== JSON.stringify(response.data)) {
-          return response.data;
-        }
-        return prevHotspots;
-      });
-    } catch (error) {
-      console.error('Error fetching hotspots:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Failed to load hotspots: ${error.message}. Please try again.` 
-      });
-    }
-  }, []);
-
-  // Modify fetchPlaylists to use retry logic
-  const fetchPlaylists = useCallback(async (locationId) => {
-    if (!locationId) {
-      console.log('No location ID provided, skipping playlist fetch');
-      return;
-    }
-
-    try {
-      console.log('Fetching playlists for location:', locationId);
-      const response = await retryWithBackoff(() => api.getPlaylistsByLocation(locationId));
-      console.log('Playlists response:', response.data);
-      
-      setPlaylists(prevPlaylists => {
-        if (JSON.stringify(prevPlaylists) !== JSON.stringify(response.data)) {
-          return response.data;
-        }
-        return prevPlaylists;
-      });
-    } catch (error) {
-      console.error('Error fetching playlists:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Failed to load playlists: ${error.message}. Please try again.` 
-      });
-    }
-  }, []);
-
-  // Load initial data only once
-  useEffect(() => {
-    const loadInitialData = async () => {
-      console.log('Loading initial data...');
-      await fetchLocations();
-    };
-    loadInitialData();
-  }, [fetchLocations]);
-
-  // Load location-specific data when location changes
-  useEffect(() => {
-    if (selectedLocation?._id) {
-      const loadLocationData = async () => {
-        console.log('Loading data for location:', selectedLocation._id);
-        
-        // Only fetch if we don't have data for this location
-        const hasAssets = assets.some(asset => asset.location?._id === selectedLocation._id);
-        const hasHotspots = hotspots.some(hotspot => hotspot.location?._id === selectedLocation._id);
-        const hasPlaylists = playlists.some(playlist => playlist.location?._id === selectedLocation._id);
-
-        console.log('Data status:', {
-          hasAssets,
-          hasHotspots,
-          hasPlaylists,
-          assetsCount: assets.length,
-          hotspotsCount: hotspots.length,
-          playlistsCount: playlists.length
+        const newAssets = response.data.map(asset => ({ ...asset, location: asset.location || { _id: locationId } }));
+        const updatedAssets = [...prevAssets];
+        newAssets.forEach(newAsset => {
+          const index = updatedAssets.findIndex(a => a._id === newAsset._id);
+          if (index !== -1) updatedAssets[index] = newAsset; // Update existing
+          else updatedAssets.push(newAsset); // Add new
         });
-
-        const promises = [];
-        if (!hasAssets) {
-          console.log('Fetching assets for location:', selectedLocation._id);
-          promises.push(fetchAssets(selectedLocation._id));
-        }
-        if (!hasHotspots) {
-          console.log('Fetching hotspots for location:', selectedLocation._id);
-          promises.push(fetchHotspots(selectedLocation._id));
-        }
-        if (!hasPlaylists) {
-          console.log('Fetching playlists for location:', selectedLocation._id);
-          promises.push(fetchPlaylists(selectedLocation._id));
-        }
-
-        if (promises.length > 0) {
-          try {
-            await Promise.all(promises);
-            console.log('Successfully loaded all data for location:', selectedLocation._id);
-          } catch (error) {
-            console.error('Error loading location data:', error);
-          }
-        } else {
-          console.log('Using cached data for location:', selectedLocation._id);
-        }
-      };
-      loadLocationData();
+        console.log('[AdminProvider] Updated cumulative assets count:', updatedAssets.length);
+        return updatedAssets;
+      });
+    } catch (error) {
+      console.error(`Error fetching assets for ${locationId}:`, error);
+      setSaveStatus({ success: false, message: `Failed to load assets: ${error.message}.` });
     }
-  }, [selectedLocation?._id, fetchAssets, fetchHotspots, fetchPlaylists, assets, hotspots, playlists]);
+  }, [retryWithBackoff]); // No dependencies like isLoading/fetchInProgress that it controls itself
 
-  // Organize assets by type when assets change
+  const fetchHotspotsForLocation = useCallback(async (locationId) => {
+    if (!locationId) return;
+    console.log(`[AdminProvider] fetchHotspotsForLocation called for ${locationId}.`);
+    try {
+      const response = await retryWithBackoff(() => api.getHotspotsByLocation(locationId));
+      console.log(`[AdminProvider] Hotspots API response for ${locationId}:`, response.data.length);
+      
+      // Replace the entire hotspots array with only the hotspots from the current location
+      // instead of accumulating hotspots from different locations
+      setHotspots(response.data);
+      console.log('[AdminProvider] Updated hotspots count for this location:', response.data.length);
+    } catch (error) {
+      console.error(`Error fetching hotspots for ${locationId}:`, error);
+      setSaveStatus({ success: false, message: `Failed to load hotspots: ${error.message}.` });
+    }
+  }, [retryWithBackoff]);
+
+  const fetchPlaylistsForLocation = useCallback(async (locationId) => {
+    if (!locationId) return;
+    console.log(`[AdminProvider] fetchPlaylistsForLocation called for ${locationId}.`);
+    try {
+      const response = await retryWithBackoff(() => api.getPlaylistsByLocation(locationId));
+      console.log(`[AdminProvider] Playlists API response for ${locationId}:`, response.data.length);
+      setPlaylists(prevPlaylists => {
+        const newPlaylists = response.data;
+        const updatedPlaylists = [...prevPlaylists];
+        newPlaylists.forEach(newPlaylist => {
+          const index = updatedPlaylists.findIndex(p => p._id === newPlaylist._id);
+          if (index !== -1) updatedPlaylists[index] = newPlaylist;
+          else updatedPlaylists.push(newPlaylist);
+        });
+        console.log('[AdminProvider] Updated cumulative playlists count:', updatedPlaylists.length);
+        return updatedPlaylists;
+      });
+    } catch (error) {
+      console.error(`Error fetching playlists for ${locationId}:`, error);
+      setSaveStatus({ success: false, message: `Failed to load playlists: ${error.message}.` });
+    }
+  }, [retryWithBackoff]);
+
+  // Effect to load initial set of all locations
   useEffect(() => {
-    console.log('Assets changed, organizing by type:', {
-      assetsCount: assets.length,
-      assets: assets.map(a => ({ id: a._id, type: a.type, name: a.name }))
-    });
+    console.log('[AdminProvider] Initial locations fetch effect running.');
+    fetchLocations();
+  }, [fetchLocations]); // fetchLocations is stable if its own deps are stable
 
+  // Effect to load data for the currently selected location
+  useEffect(() => {
+    const currentLocId = selectedLocation?._id;
+    if (currentLocId) {
+      console.log(`[AdminProvider] Selected location changed to: ${currentLocId}. Checking data.`);
+      
+      // Only fetch if we haven't already fetched data for this location
+      if (!fetchedLocationIds.has(currentLocId)) {
+        setIsFetchingLocationData(true);
+        
+        const loadAllDataForLocation = async () => {
+          console.log(`[AdminProvider] Loading data for location: ${currentLocId} (not previously fetched)`);
+          
+          const promisesToRun = [
+            fetchAssetsForLocation(currentLocId),
+            fetchHotspotsForLocation(currentLocId),
+            fetchPlaylistsForLocation(currentLocId)
+          ];
+
+          try {
+            await Promise.all(promisesToRun);
+            console.log(`[AdminProvider] All data fetched for ${currentLocId}.`);
+            
+            // Mark this location as fetched to prevent future redundant fetches
+            setFetchedLocationIds(prev => new Set([...prev, currentLocId]));
+          } catch (err) {
+            console.error(`[AdminProvider] Error during Promise.all for ${currentLocId}:`, err);
+          } finally {
+            setIsFetchingLocationData(false);
+            console.log(`[AdminProvider] Finished data processing for ${currentLocId}.`);
+          }
+        };
+
+        loadAllDataForLocation();
+      } else {
+        console.log(`[AdminProvider] Location ${currentLocId} data already fetched, skipping.`);
+      }
+    }
+  }, [selectedLocation?._id, fetchedLocationIds, fetchAssetsForLocation, fetchHotspotsForLocation, fetchPlaylistsForLocation]);
+  // Removed assets, hotspots, playlists from dependency array since they cause render loops
+  
+  // Organize assets by type when the cumulative 'assets' state changes
+  useEffect(() => {
+    console.log('[AdminProvider] Organizing assets by type. Total assets:', assets.length);
     if (!assets.length) {
-      console.log('No assets to organize');
+        // Ensure assetsByType is reset if all assets are cleared
+        setAssetsByType(prev => {
+            const isEmpty = Object.values(prev).every(arr => arr.length === 0);
+            if (!isEmpty) return { AERIAL: [], DiveIn: [], FloorLevel: [], ZoomOut: [], Transition: [], Button: [], MapPin: [], UIElement: [] };
+            return prev;
+        });
       return;
     }
 
-    console.log('Organizing assets by type. Total assets:', assets.length);
-    
-    const categorized = {
-      AERIAL: [],
-      DiveIn: [],
-      FloorLevel: [],
-      ZoomOut: [],
-      Transition: [],
-      Button: [],
-      MapPin: [],
-      UIElement: []
-    };
-    
-    assets.forEach(asset => {
-      if (categorized[asset.type]) {
-        categorized[asset.type].push(asset);
-      } else {
-        console.warn('Unknown asset type:', asset.type, asset);
-      }
-    });
-    
-    console.log('Assets by type:', Object.entries(categorized).reduce((acc, [type, items]) => {
-      acc[type] = {
-        count: items.length,
-        assets: items.map(a => ({ id: a._id, name: a.name }))
-      };
+    const categorized = assets.reduce((acc, asset) => {
+      if (!acc[asset.type]) acc[asset.type] = [];
+      acc[asset.type].push(asset);
       return acc;
-    }, {}));
+    }, { AERIAL: [], DiveIn: [], FloorLevel: [], ZoomOut: [], Transition: [], Button: [], MapPin: [], UIElement: [] });
     
     setAssetsByType(prev => {
-      // Only update if assets have changed
       if (JSON.stringify(prev) !== JSON.stringify(categorized)) {
-        console.log('Updating assets by type');
+        console.log('[AdminProvider] Assets by type updated.');
         return categorized;
       }
-      console.log('Assets by type unchanged');
       return prev;
     });
   }, [assets]);
@@ -306,32 +227,20 @@ export function AdminProvider({ children }) {
   const uploadAsset = async (file, name, type, locationId = null) => {
     setIsSaving(true);
     setSaveStatus({ success: false, message: 'Uploading asset...' });
-    
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('name', name);
       formData.append('type', type);
-      if (locationId) {
-        formData.append('location', locationId);
-      }
-      
+      if (locationId) formData.append('location', locationId);
       const response = await api.createAsset(formData);
-      
-      // Update assets list
-      setAssets(prevAssets => [...prevAssets, response.data]);
-      
-      setSaveStatus({ 
-        success: true, 
-        message: `Asset "${name}" uploaded successfully.` 
-      });
+      // Manually add to the cumulative assets state after successful upload
+      setAssets(prevAssets => [...prevAssets, { ...response.data, location: response.data.location || { _id: locationId } }]);
+      setSaveStatus({ success: true, message: `Asset "${name}" uploaded successfully.` });
       return response.data;
     } catch (error) {
       console.error('Error uploading asset:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Error uploading asset: ${error.response?.data?.error || error.message}` 
-      });
+      setSaveStatus({ success: false, message: `Error uploading asset: ${error.response?.data?.error || error.message}` });
       return null;
     } finally {
       setIsSaving(false);
@@ -341,24 +250,14 @@ export function AdminProvider({ children }) {
   const deleteAsset = async (assetId) => {
     setIsSaving(true);
     setSaveStatus({ success: false, message: 'Deleting asset...' });
-    
     try {
       await api.deleteAsset(assetId);
-      
-      // Update assets list
       setAssets(prevAssets => prevAssets.filter(asset => asset._id !== assetId));
-      
-      setSaveStatus({ 
-        success: true, 
-        message: 'Asset deleted successfully.' 
-      });
+      setSaveStatus({ success: true, message: 'Asset deleted successfully.' });
       return true;
     } catch (error) {
       console.error('Error deleting asset:', error);
-      setSaveStatus({ 
-        success: false, 
-        message: `Error deleting asset: ${error.response?.data?.error || error.message}` 
-      });
+      setSaveStatus({ success: false, message: `Error deleting asset: ${error.response?.data?.error || error.message}` });
       return false;
     } finally {
       setIsSaving(false);
@@ -516,37 +415,151 @@ export function AdminProvider({ children }) {
     }
   };
   
+  // Location management functions
+  const createLocation = async (locationData) => {
+    setIsSaving(true);
+    setSaveStatus({ success: false, message: 'Creating location...' });
+    
+    try {
+      const response = await api.createLocation(locationData);
+      
+      // Update locations list
+      setLocations(prevLocations => [...prevLocations, response.data]);
+      
+      setSaveStatus({ 
+        success: true, 
+        message: `Location "${locationData.name}" created successfully.` 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating location:', error);
+      setSaveStatus({ 
+        success: false, 
+        message: `Error creating location: ${error.response?.data?.error || error.message}` 
+      });
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateLocation = async (locationId, locationData) => {
+    setIsSaving(true);
+    setSaveStatus({ success: false, message: 'Updating location...' });
+    
+    try {
+      const response = await api.updateLocation(locationId, locationData);
+      
+      // Update locations list
+      setLocations(prevLocations => 
+        prevLocations.map(location => 
+          location._id === locationId ? response.data : location
+        )
+      );
+      
+      // If this is the selected location, update it too
+      if (selectedLocation && selectedLocation._id === locationId) {
+        setSelectedLocation(response.data);
+      }
+      
+      setSaveStatus({ 
+        success: true, 
+        message: `Location "${locationData.name}" updated successfully.` 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating location:', error);
+      setSaveStatus({ 
+        success: false, 
+        message: `Error updating location: ${error.response?.data?.error || error.message}` 
+      });
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteLocation = async (locationId) => {
+    setIsSaving(true);
+    setSaveStatus({ success: false, message: 'Deleting location...' });
+    
+    try {
+      await api.deleteLocation(locationId);
+      
+      // Update locations list
+      setLocations(prevLocations => prevLocations.filter(location => location._id !== locationId));
+      
+      // If this is the selected location, clear it and select another one if available
+      if (selectedLocation && selectedLocation._id === locationId) {
+        const remainingLocations = locations.filter(location => location._id !== locationId);
+        setSelectedLocation(remainingLocations.length > 0 ? remainingLocations[0] : null);
+        
+        // Clear data for this location
+        if (remainingLocations.length === 0) {
+          setAssets([]);
+          setHotspots([]);
+          setPlaylists([]);
+        }
+      }
+      
+      // Remove from fetchedLocationIds
+      setFetchedLocationIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(locationId);
+        return newSet;
+      });
+      
+      setSaveStatus({ 
+        success: true, 
+        message: 'Location deleted successfully.' 
+      });
+      return true;
+    } catch (error) {
+      console.error('Error deleting location:', error);
+      setSaveStatus({ 
+        success: false, 
+        message: `Error deleting location: ${error.response?.data?.error || error.message}` 
+      });
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
   // Provide the context value
   const value = {
-    // State
     locations,
     selectedLocation,
-    setSelectedLocation,
-    assets,
-    assetsByType,
+    setSelectedLocation, // Make sure this is used carefully to avoid loops
+    assets, // The cumulative list of all assets fetched
+    assetsByType, // Assets categorized and filtered for the UI
     hotspots,
     selectedHotspot,
     setSelectedHotspot,
     drawingMode,
     setDrawingMode,
     playlists,
-    isLoading,
+    isLoading: isLoadingLocations || isFetchingLocationData, // Combined loading state for UI
+    fetchInProgress: isFetchingLocationData, // More specific for asset/hotspot/playlist fetches per location
     isSaving,
     saveStatus,
     setSaveStatus,
-    
-    // API methods
     fetchLocations,
-    fetchAssets,
-    fetchHotspots,
-    fetchPlaylists,
+    fetchAssets: fetchAssetsForLocation, // Expose the per-location fetcher
+    fetchHotspots: fetchHotspotsForLocation,
+    fetchPlaylists: fetchPlaylistsForLocation,
     uploadAsset,
     deleteAsset,
     createHotspot,
     updateHotspot,
     deleteHotspot,
     updatePlaylist,
-    pushChangesToFrontend
+    pushChangesToFrontend,
+    fetchedLocationIds,
+    // Added location management functions
+    createLocation,
+    updateLocation,
+    deleteLocation
   };
   
   return (

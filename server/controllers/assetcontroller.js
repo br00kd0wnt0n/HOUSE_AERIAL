@@ -2,29 +2,16 @@ const Asset = require('../models/asset');
 const fs = require('fs');
 const path = require('path');
 
-// Define storage directory
-const STORAGE_DIR = path.join(__dirname, '../storage/assets');
+// Define storage directories - Simplified approach
+const BASE_STORAGE_DIR = path.join(__dirname, '../storage/uploads');
 
 // Helper function to ensure storage directory exists
 const ensureStorageDir = (type) => {
-  const dir = path.join(STORAGE_DIR, type);
+  const dir = path.join(BASE_STORAGE_DIR, type);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
   return dir;
-};
-
-// Helper function to get content type based on file extension
-const getContentType = (filename) => {
-  const ext = path.extname(filename).toLowerCase();
-  const contentTypes = {
-    '.mp4': 'video/mp4',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif'
-  };
-  return contentTypes[ext] || 'application/octet-stream';
 };
 
 // Get all assets with optional type and location filter
@@ -64,7 +51,7 @@ exports.createAsset = async (req, res) => {
     }
     
     // Ensure storage directory exists for this asset type
-    const typeDir = await ensureStorageDir(type);
+    const typeDir = ensureStorageDir(type);
     
     // Generate unique filename
     const filename = `${Date.now()}-${file.originalname}`;
@@ -73,12 +60,15 @@ exports.createAsset = async (req, res) => {
     // Save file to disk
     await fs.promises.writeFile(filepath, file.buffer);
     
+    // Create access URL for the API
+    const accessUrl = `/api/assets/file/${type}/${filename}`;
+    
     // Create new asset in database
     const asset = new Asset({
       name,
       type,
-      s3Key: path.join('assets', type, filename), // Keep s3Key for compatibility
-      s3Url: `/api/assets/file/${type}/${filename}`, // Serve through API endpoint
+      filePath: filepath,
+      accessUrl,
       fileType,
       size: file.size,
       location: location || null
@@ -120,29 +110,35 @@ exports.updateAsset = async (req, res) => {
     // Update fields
     if (name) asset.name = name;
     if (type) asset.type = type;
-    if (location) asset.location = location;
+    if (location !== undefined) asset.location = location;
     
     // If new file is provided, update the file
     if (file) {
-      // Delete old file
-      const oldFilepath = path.join(STORAGE_DIR, asset.s3Key.replace('assets/', ''));
+      // Delete old file if it exists
       try {
-        await fs.promises.unlink(oldFilepath);
+        if (fs.existsSync(asset.filePath)) {
+          await fs.promises.unlink(asset.filePath);
+        } else {
+          console.warn(`Old file not found at path: ${asset.filePath}`);
+        }
       } catch (error) {
         console.warn('Could not delete old file:', error);
       }
       
       // Save new file
-      const typeDir = await ensureStorageDir(type || asset.type);
+      const typeDir = ensureStorageDir(type || asset.type);
       const filename = `${Date.now()}-${file.originalname}`;
       const filepath = path.join(typeDir, filename);
       
       await fs.promises.writeFile(filepath, file.buffer);
       
+      // Create access URL for the API
+      const accessUrl = `/api/assets/file/${type || asset.type}/${filename}`;
+      
       // Update asset properties
       const fileType = path.extname(file.originalname).substring(1).toLowerCase();
-      asset.s3Key = path.join('assets', type || asset.type, filename);
-      asset.s3Url = `/api/assets/file/${type || asset.type}/${filename}`;
+      asset.filePath = filepath;
+      asset.accessUrl = accessUrl;
       asset.fileType = fileType;
       asset.size = file.size;
     }
@@ -164,9 +160,12 @@ exports.deleteAsset = async (req, res) => {
     }
     
     // Delete file from storage
-    const filepath = path.join(STORAGE_DIR, asset.s3Key.replace('assets/', ''));
     try {
-      await fs.promises.unlink(filepath);
+      if (fs.existsSync(asset.filePath)) {
+        await fs.promises.unlink(asset.filePath);
+      } else {
+        console.warn(`File not found at path: ${asset.filePath}`);
+      }
     } catch (error) {
       console.warn('Could not delete file:', error);
     }
@@ -185,7 +184,7 @@ exports.deleteAsset = async (req, res) => {
 exports.serveAssetFile = async (req, res) => {
   try {
     const { type, filename } = req.params;
-    const filePath = path.join(STORAGE_DIR, type, filename);
+    const filePath = path.join(BASE_STORAGE_DIR, type, filename);
 
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -204,3 +203,22 @@ exports.serveAssetFile = async (req, res) => {
     res.status(500).json({ error: 'Failed to serve asset file' });
   }
 };
+
+// Helper function to determine content type
+function getContentType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  
+  switch (ext) {
+    case '.mp4':
+      return 'video/mp4';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    default:
+      return 'application/octet-stream';
+  }
+}

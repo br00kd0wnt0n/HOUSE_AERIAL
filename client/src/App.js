@@ -4,15 +4,16 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { VideoProvider } from './context/VideoContext';
 import { AdminProvider } from './context/AdminContext';
+import { Toaster } from './components/ui/use-toast';
 import Menu from './pages/Menu';
 import Experience from './pages/Experience';
 import Assets from './pages/Admin/Assets';
+import Locations from './pages/Admin/Locations';
 import Hotspots from './pages/Admin/Hotspots';
 import Playlists from './pages/Admin/Playlists';
-import AssetManager from './components/admin/AssetManager';
 import AdminNav from './components/AdminPanel/AdminNav';
 import api from './utils/api';
-import './styles/App.css';
+import './styles/index.css'; // Only import the main Tailwind CSS file
 
 function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -69,56 +70,65 @@ function App() {
     };
   }, []);
 
-  // Handle loading state
+  // If loading, always show loading screen
   if (isLoading) {
     return (
-      <div className="loading-screen">
-        <div className="netflix-spinner">
-          <div className="netflix-spinner-inner"></div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-netflix-black text-white">
+        <div className="relative w-16 h-16 mb-6">
+          <div className="w-full h-full border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
         </div>
-        <p>Loading...</p>
+        <p className="text-lg">Loading...</p>
       </div>
     );
   }
 
-  return (
-    <div className="app">
-      {isAdminMode ? (
+  // If in admin mode, always render admin panel regardless of hasConfig
+  if (isAdminMode) {
+    return (
+      <div className="min-h-screen bg-netflix-black text-white">
         <AdminProvider>
-          <div className="admin-container">
+          <div className="flex min-h-screen">
             <AdminNav />
-            <main className="admin-content">
+            <main className="flex-1 pl-64">
               <Routes>
-                <Route path="/admin/ui-assets" element={<AssetManager />} />
+                <Route path="/admin/locations" element={<Locations />} />
                 <Route path="/admin/hotspots" element={<Hotspots />} />
                 <Route path="/admin/playlists" element={<Playlists />} />
                 <Route path="/admin/assets" element={<Assets />} />
-                <Route path="/admin" element={<Assets />} />
-                <Route path="*" element={<Navigate to="/admin/assets" replace />} />
+                {/* Default admin route */}
+                <Route path="/admin" element={<Navigate to="/admin/assets" replace />} />
+                 {/* Fallback for any other admin paths */}
+                <Route path="/admin/*" element={<Navigate to="/admin/assets" replace />} />
               </Routes>
             </main>
           </div>
+          <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
         </AdminProvider>
-      ) : (
-        <VideoProvider>
-          <Routes>
-            {hasConfig ? (
-              <>
-                <Route path="/experience/:locationId" element={<Experience />} />
-                <Route path="/" element={<Menu />} />
-              </>
-            ) : (
-              <Route path="*" element={
-                <div className="no-config-message">
-                  <h2>Netflix House Experience Setup Required</h2>
-                  <p>This experience needs to be configured in the admin panel before it can be used.</p>
-                  <p>Press Ctrl+Shift+A to access the admin panel and complete the setup.</p>
-                </div>
-              } />
-            )}
-          </Routes>
-        </VideoProvider>
-      )}
+      </div>
+    );
+  }
+
+  // For non-admin routes, check hasConfig
+  return (
+    <div className="min-h-screen bg-netflix-black text-white">
+      <VideoProvider>
+        <Routes>
+          {hasConfig ? (
+            <>
+              <Route path="/experience/:locationId" element={<Experience />} />
+              <Route path="/" element={<Menu />} />
+            </>
+          ) : (
+            <Route path="*" element={
+              <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+                <h2 className="text-2xl font-bold text-netflix-red mb-4">Netflix House Experience Setup Required</h2>
+                <p className="text-netflix-lightgray mb-2">This experience needs to be configured in the admin panel before it can be used.</p>
+                <p className="text-netflix-lightgray">Press Ctrl+Shift+A to access the admin panel and complete the setup.</p>
+              </div>
+            } />
+          )}
+        </Routes>
+      </VideoProvider>
     </div>
   );
 }

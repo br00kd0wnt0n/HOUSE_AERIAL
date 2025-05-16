@@ -1,95 +1,268 @@
-/* Placeholder index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Global styles */
-body {
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #000;
-  color: #fff;
+@layer base {
+  :root {
+    --background: 0 0% 8%; /* Netflix black */
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 12%; /* Slightly lighter black for cards */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 92% 48%; /* Netflix red */
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 20%; /* Netflix dark gray */
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 30%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 0 92% 28%; /* Darker Netflix red */
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 92% 48%; /* Netflix red for destructive */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 92% 48%; /* Netflix red for focus rings */
+
+    --radius: 0.5rem;
+  }
 }
 
-/* Loading spinner styles */
-.loading-screen {
+/* Global styles */
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  font-family: Arial, sans-serif;
+  background-color: #000;
+  color: #fff;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Menu page styling */
+.menu-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100vh;
+  width: 100%;
+  background-color: #000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.menu-header,
+.menu-footer {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.netflix-logo {
+  height: 40px;
+  margin-bottom: 10px;
+}
+
+.menu-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  background-color: #000;
 }
 
-.netflix-spinner {
-  width: 50px;
-  height: 50px;
-  position: relative;
-  margin-bottom: 20px;
+.location-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 30px;
 }
 
-.netflix-spinner-inner {
+.location-button-container {
+  text-align: center;
+}
+
+.location-button {
+  width: 200px;
+  height: 100%;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.location-button:hover {
+  transform: scale(1.05);
+}
+
+.location-button-image {
   width: 100%;
   height: 100%;
-  border: 4px solid #e50914;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: netflix-spin 1s linear infinite;
+  object-fit: cover;
 }
 
-@keyframes netflix-spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
+.location-button-text {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.location-name {
+  margin-top: 10px;
+  font-size: 16px;
+  color: white;
+}
+
+/* Experience page styling */
+.experience-container {
+  position: relative;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.menu-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 100;
+}
+
+.menu-button:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: #e50914;
+}
+
+/* Hotspot styling */
+.hotspot {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+}
+
+.hotspot-indicator {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+  margin: 10px;
+  transition: transform 0.2s;
+}
+
+.primary .hotspot-indicator {
+  background-color: #e50914;
+}
+
+.secondary .hotspot-indicator {
+  background-color: #fff;
+}
+
+.hotspot:hover .hotspot-indicator {
+  transform: scale(1.2);
+}
+
+.hotspot-label {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.hotspot:hover .hotspot-label {
+  opacity: 1;
+}
+
+/* Loading spinner */
+.loading-spinner-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #e50914;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
     transform: rotate(360deg);
   }
 }
 
-.loading-screen p {
-  color: #fff;
-  font-size: 1.2rem;
-  margin: 0;
-}
-
-/* Loading container styles */
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background-color: #000;
-  padding: 20px;
-}
-
-.loading-progress {
-  width: 300px;
-  margin: 20px 0;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background-color: #e50914;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  color: #fff;
-  font-size: 0.9rem;
-  margin-top: 8px;
-  text-align: center;
-}
-
 .loading-message {
-  color: #fff;
-  font-size: 1.2rem;
   margin-top: 20px;
-  text-align: center;
-} 
+  color: white;
+}
+
+/* Netflix-specific colors */
+.text-netflix-red {
+  color: #e50914;
+}
+
+.bg-netflix-black {
+  background-color: #000;
+}
+
+.bg-netflix-red {
+  background-color: #e50914;
+}
+
+.border-netflix-red {
+  border-color: #e50914;
+}

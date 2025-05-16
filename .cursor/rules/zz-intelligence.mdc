@@ -1,0 +1,36 @@
+---
+description: Project intelligence journal
+manual: true
+---
+
+# Project Intelligence Journal
+
+This journal contains validated insights about the Netflix House Aerial Experience project, confirmed with the user.
+
+## Architecture Insights
+
+- The project uses a client-server architecture with React frontend and Express backend
+- Video sequences follow a structured pattern: Aerial → Dive-In → Floor Level → Zoom Out
+- Assets are organized by type in the server/storage/uploads directory
+- Database models use Mongoose with MongoDB for data storage
+
+## UI/UX Insights
+
+- The application is migrating from pure CSS to Tailwind CSS (v3.3.0)
+- shadcn/ui components are being integrated for a consistent design system
+- Netflix-themed colors are implemented in the Tailwind configuration
+- Admin mode is toggled via a keyboard shortcut (Ctrl+Shift+A) rather than auth
+
+## Asset Management Insights
+
+- The project is moving from filesystem-based location structure to database-driven approach
+- Button assets are managed with ON/OFF states for consistent appearance
+- Assets are categorized by type (AERIAL, DiveIn, FloorLevel, Transition, etc.)
+- Videos must be properly optimized for streaming performance
+
+## Development Workflow Insights
+
+- Memory Bank documentation is the source of truth for project context
+- UI framework migration is being implemented in phases by component type
+- Location management implementation is a current priority
+- Asset management restructuring aims to simplify the upload directory structure

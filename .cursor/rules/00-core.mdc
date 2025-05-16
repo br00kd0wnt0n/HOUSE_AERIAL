@@ -1,0 +1,46 @@
+---
+description: Project conventions
+alwaysApply: true
+---
+
+# Netflix House Aerial Experience - Core Conventions
+
+## Project Structure
+
+- **Client-Server Architecture**
+  - `client/`: React frontend
+  - `server/`: Express backend
+  - `memory-bank/`: Project documentation
+
+## Frontend Structure
+
+- **Components**: Organized in `client/src/components/` by feature/purpose
+- **Assets**: Media stored in `client/public/assets/` and `client/src/assets/`
+- **Styling**: Tailwind CSS (v3.3.0) with Netflix theme, shadcn/ui components
+
+## Backend Structure
+
+- **Controllers**: Business logic in `server/controllers/`
+- **Models**: Mongoose schemas in `server/models/`
+- **Routes**: API endpoints in `server/routes/`
+- **Storage**: Local file storage in `server/storage/uploads/` by type
+
+## Design Patterns
+
+- **State Management**: React Context API for global state
+- **API Communication**: RESTful endpoints with Axios
+- **Error Handling**: ErrorBoundary for React components, consistent error response format
+- **Loading States**: Component-level loading indicators for UX
+
+## File & Asset Management
+
+- Videos organized by type (AERIAL, DiveIn, FloorLevel, etc.)
+- Button assets managed with ON/OFF states
+- Assets stored locally, referenced with `filePath` and `accessUrl` fields in MongoDB
+
+## Coding Patterns
+
+- **Components**: Functional components with hooks
+- **CSS**: Tailwind utility classes with shadcn/ui components
+- **Code Organization**: Clear separation of concerns, utility functions in `src/utils/`
+- **Class Naming**: `cn()` utility for Tailwind class merging in `src/lib/utils.js` 

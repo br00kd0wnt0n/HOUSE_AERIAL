@@ -1,0 +1,56 @@
+---
+description: Memory update workflow
+manual: true
+---
+
+# Memory Update Workflow
+
+## When to Update Memory Bank
+
+The Memory Bank documentation should be updated in these scenarios:
+
+1. **Discovery of New Project Patterns**
+   - When new architectural patterns emerge
+   - When new coding conventions are established
+   - When new file organization patterns are identified
+
+2. **Completion of Significant Changes**
+   - After implementing major features
+   - After resolving significant issues
+   - After architectural refactoring
+   - After UI framework migration milestones
+
+3. **Explicit User Request**
+   - When the user says "update memory bank"
+   - Must review and update every Memory Bank file
+
+4. **Context Clarification Needed**
+   - When project understanding needs refinement
+   - When documentation is inconsistent with code
+   - When current focus has shifted significantly
+
+## Update Process
+
+1. **Review Current Documentation**
+   - Check all core Memory Bank files for accuracy
+   - Identify outdated or missing information
+   - Note inconsistencies between files
+
+2. **Update Core Files as Needed**
+   - `projectbrief.md`: Update project scope/goals if changed
+   - `productContext.md`: Update UX goals and user expectations
+   - `systemPatterns.md`: Add new architectural patterns
+   - `techContext.md`: Update technical details and constraints
+   - `activeContext.md`: Refresh current focus and next steps
+   - `progress.md`: Update completion status and blockers
+
+3. **Generate/Update Rule Files**
+   - Ensure `.cursor/rules/` directory exists
+   - Create or update rules with YAML front matter
+   - Keep rule files concise (≤ 600 tokens)
+   - Store complex content in the Memory Bank
+
+4. **Verify Consistency**
+   - Ensure information is consistent across files
+   - Check that current focus aligns with progress
+   - Verify that technical details match system patterns 

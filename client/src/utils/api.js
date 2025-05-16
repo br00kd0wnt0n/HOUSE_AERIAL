@@ -12,6 +12,9 @@ export const instance = axios.create({
   }
 });
 
+// Ensure a consistent backend URL to use in other places
+export const baseBackendUrl = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:3001';
+
 // Add request interceptor for logging and error handling
 instance.interceptors.request.use(
   request => {
@@ -67,6 +70,35 @@ instance.interceptors.response.use(
 export const getVideoUrl = (s3Key) => {
   if (!s3Key) return null;
   
+  console.log('Original s3Key:', s3Key);
+  
+  // Check if it's already in the correct format (API URL)
+  if (s3Key.startsWith('/api/')) {
+    console.log('s3Key already in correct format:', s3Key);
+    return s3Key;
+  }
+  
+  // Handle location-based paths
+  // Format: 'assets/Netflix_House_Philadelphia/AERIAL/filename.mp4'
+  if (s3Key.includes('Netflix_House_Philadelphia') || s3Key.includes('Netflix_House_Dallas')) {
+    const parts = s3Key.split('/');
+    // Remove 'assets/' if present
+    if (parts[0] === 'assets') {
+      parts.shift();
+    }
+    
+    // Extract location, type, and filename
+    const location = parts[0]; // e.g., Netflix_House_Philadelphia
+    const type = parts[1];     // e.g., AERIAL
+    const filename = parts.slice(2).join('/'); // In case filename has slashes
+    
+    // Construct the URL with the correct structure
+    const url = `/api/assets/file/${location}/${type}/${filename}`;
+    console.log('Transformed location-based URL:', url);
+    return url;
+  }
+  
+  // Handle non-location paths (legacy format)
   // Remove 'assets/' prefix if present
   const path = s3Key.startsWith('assets/') ? s3Key.slice(7) : s3Key;
   
@@ -78,7 +110,7 @@ export const getVideoUrl = (s3Key) => {
   const encodedFilename = encodeURIComponent(filename);
   
   // Construct the URL with encoded filename
-  const url = `/assets/file/${type}/${encodedFilename}`;
+  const url = `/api/assets/file/${type}/${encodedFilename}`;
   console.log('Transformed URL:', url);
   
   return url;
@@ -110,13 +142,25 @@ const api = {
           location: locationId
         }
       });
-      // Transform the URLs for video assets
-      if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition'].includes(type)) {
-        response.data = response.data.map(asset => ({
-          ...asset,
-          s3Key: getVideoUrl(asset.s3Key)
-        }));
-      }
+      
+      // Process all assets to ensure proper URLs for the frontend
+      response.data = response.data.map(asset => {
+        // Make sure we have a properly formatted accessUrl
+        if (asset.accessUrl && asset.accessUrl.startsWith('/api/')) {
+          return asset;
+        }
+        
+        // If for some reason accessUrl is not properly formatted, generate it
+        if (asset.accessUrl) {
+          // Use baseBackendUrl when constructing absolute URLs
+          asset.accessUrl = asset.accessUrl.startsWith('/') ? 
+            `${baseBackendUrl}${asset.accessUrl.startsWith('/api/') ? asset.accessUrl : `/api${asset.accessUrl}`}` : 
+            `${baseBackendUrl}/api/assets/file/${asset.accessUrl}`;
+        }
+        
+        return asset;
+      });
+      
       return response;
     } catch (error) {
       console.error(`Error fetching ${type} assets:`, error);
@@ -135,7 +179,6 @@ const api = {
     }
   }),
   deleteAsset: (id) => instance.delete(`/assets/${id}`),
-  syncAssetsWithS3: () => instance.get('/assets/sync'),
 
   // Hotspot endpoints
   getHotspots: (locationId, type) => {

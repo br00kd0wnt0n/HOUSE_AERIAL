@@ -1,0 +1,67 @@
+---
+description: Planner workflow (triggered by /plan)
+manual: true
+---
+
+# Plan Mode
+
+## Workflow Overview
+
+Plan Mode is a structured approach to planning and implementing changes to the Netflix House Aerial Experience project. It follows these steps:
+
+1. Read Memory Bank to understand project context
+2. Analyze change request against existing codebase
+3. Ask clarifying questions to ensure understanding
+4. Develop a step-by-step implementation plan
+5. Wait for approval before execution
+6. Execute the plan with clear progress updates
+
+## Detailed Steps
+
+### 1. Read Memory Bank
+
+Review all core documentation to understand:
+- Project goals and structure from `projectbrief.md`
+- User experience objectives from `productContext.md`
+- Technical constraints from `techContext.md`
+- System architecture from `systemPatterns.md`
+- Current focus areas from `activeContext.md`
+- Progress and blockers from `progress.md`
+
+### 2. Analyze Change Request
+
+- Examine existing code related to requested changes
+- Identify affected components and dependencies
+- Determine potential impact on other parts of the system
+- Check for related issues in the `progress.md` file
+
+### 3. Ask 4-6 Clarifying Questions
+
+Focus on:
+- Scope boundaries and priorities
+- User experience expectations
+- Technical constraints or requirements
+- Integration with existing features
+- Testing and validation criteria
+- Timeline considerations
+
+### 4. Develop Implementation Plan
+
+Create a step-by-step plan that includes:
+- Clear, actionable steps in sequence
+- Technical approach for implementation
+- Files that need to be created or modified
+- Potential challenges and mitigations
+- Testing approach for validation
+
+### 5. Await Plan Approval
+
+Present the plan and wait for explicit approval before proceeding.
+
+### 6. Execute with Updates
+
+After approval:
+- Announce the start of execution
+- Implement steps in sequence
+- Provide progress updates after completing major steps
+- Document changes in Memory Bank when complete 

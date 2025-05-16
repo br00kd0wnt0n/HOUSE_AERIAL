@@ -1,13 +1,33 @@
 // client/src/context/VideoContext.js - Context for video state management
 
 import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
-import api from '../utils/api';
+import api, { baseBackendUrl } from '../utils/api';
 
 const VideoContext = createContext();
 
 export function useVideo() {
   return useContext(VideoContext);
 }
+
+// Helper function to properly format video URLs
+const formatVideoUrl = (url) => {
+  if (!url) return null;
+  
+  // Skip if already a full URL
+  if (url.startsWith('http')) return url;
+  
+  // Remove any duplicate /api/ prefixes
+  let cleanUrl = url;
+  if (cleanUrl.startsWith('/api/')) {
+    // URL already has /api/ prefix, just append to base URL
+    return `${baseBackendUrl}${cleanUrl}`;
+  }
+  
+  // Add /api/ prefix to other URLs
+  return cleanUrl.startsWith('/') 
+    ? `${baseBackendUrl}/api${cleanUrl}` 
+    : `${baseBackendUrl}/api/${cleanUrl}`;
+};
 
 export function VideoProvider({ children }) {
   // State for locations
@@ -75,6 +95,8 @@ export function VideoProvider({ children }) {
       if (assetsCache[currentLocation._id]) {
         const cachedAssets = assetsCache[currentLocation._id];
         if (isMounted) {
+          console.log('Using cached assets for location:', currentLocation.name);
+          console.log('Cached aerial video:', cachedAssets.aerial);
           setAerialVideo(cachedAssets.aerial);
           setTransitionVideo(cachedAssets.transition);
           setHotspots(cachedAssets.hotspots);
@@ -87,6 +109,8 @@ export function VideoProvider({ children }) {
       }
       
       try {
+        console.log('Fetching assets for location:', currentLocation.name);
+        
         // Load all assets in parallel
         const [aerialResponse, transitionResponse, hotspotsResponse] = await Promise.all([
           api.getAssetsByType('AERIAL', currentLocation._id),
@@ -96,9 +120,22 @@ export function VideoProvider({ children }) {
         
         if (!isMounted) return;
         
+        console.log('Aerial video response:', aerialResponse.data);
+        
         const aerialVideo = aerialResponse.data.length > 0 ? aerialResponse.data[0] : null;
         const transitionVideo = transitionResponse.data.length > 0 ? transitionResponse.data[0] : null;
         const hotspots = hotspotsResponse.data;
+        
+        // Make sure the video URLs are properly formatted
+        if (aerialVideo && aerialVideo.accessUrl) {
+          aerialVideo.accessUrl = formatVideoUrl(aerialVideo.accessUrl);
+          console.log('Formatted aerial video URL:', aerialVideo.accessUrl);
+        }
+        
+        if (transitionVideo && transitionVideo.accessUrl) {
+          transitionVideo.accessUrl = formatVideoUrl(transitionVideo.accessUrl);
+          console.log('Formatted transition video URL:', transitionVideo.accessUrl);
+        }
         
         // Cache the assets for this location
         setAssetsCache(prev => ({
@@ -127,7 +164,7 @@ export function VideoProvider({ children }) {
     return () => {
       isMounted = false;
     };
-  }, [currentLocation?._id]); // Only depend on location ID
+  }, [currentLocation, assetsCache]); // Added assetsCache to dependency array
   
   // Handle hotspot click
   const handleHotspotClick = async (hotspot) => {
@@ -139,10 +176,25 @@ export function VideoProvider({ children }) {
         const playlistResponse = await api.getPlaylistByHotspot(hotspot._id);
         const playlist = playlistResponse.data;
         
+        console.log('Playlist fetched for hotspot:', playlist);
+        
         // Set video sequence and start playback
         if (playlist.sequence.diveInVideo && 
             playlist.sequence.floorLevelVideo && 
             playlist.sequence.zoomOutVideo) {
+          
+          // Make sure the video URLs are properly formatted using our helper function
+          if (playlist.sequence.diveInVideo.accessUrl) {
+            playlist.sequence.diveInVideo.accessUrl = formatVideoUrl(playlist.sequence.diveInVideo.accessUrl);
+          }
+          
+          if (playlist.sequence.floorLevelVideo.accessUrl) {
+            playlist.sequence.floorLevelVideo.accessUrl = formatVideoUrl(playlist.sequence.floorLevelVideo.accessUrl);
+          }
+          
+          if (playlist.sequence.zoomOutVideo.accessUrl) {
+            playlist.sequence.zoomOutVideo.accessUrl = formatVideoUrl(playlist.sequence.zoomOutVideo.accessUrl);
+          }
           
           setVideoSequence({
             diveIn: playlist.sequence.diveInVideo,
@@ -213,7 +265,8 @@ export function VideoProvider({ children }) {
     zoomOutVideoRef,
     transitionVideoRef,
     loadingProgress,
-    updateLoadingProgress
+    updateLoadingProgress,
+    formatVideoUrl
   };
   
   return (

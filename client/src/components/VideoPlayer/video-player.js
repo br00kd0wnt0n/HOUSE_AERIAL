@@ -1,6 +1,6 @@
 // client/src/components/VideoPlayer/VideoPlayer.js - Custom video player component
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import './VideoPlayer.css';
 
 const VideoPlayer = ({ 
@@ -21,11 +21,11 @@ const VideoPlayer = ({
   const [activeVideoId, setActiveVideoId] = useState('aerial');
   
   // Function to get the appropriate video source
-  const getVideoSource = (type) => {
+  const getVideoSource = useCallback((type) => {
     if (type === 'aerial' && videoAssets.aerial) {
-      return videoAssets.aerial.s3Key;
+      return videoAssets.aerial.accessUrl;
     } else if (type === 'transition' && videoAssets.transition) {
-      return videoAssets.transition.s3Key;
+      return videoAssets.transition.accessUrl;
     } else if (activeHotspot) {
       // For hotspot videos, get from the videoLoader which has preloaded videos
       if (type === 'diveIn') {
@@ -37,7 +37,7 @@ const VideoPlayer = ({
       }
     }
     return '';
-  };
+  }, [videoAssets, activeHotspot, videoLoader]);
   
   // Handle video ending events
   const handleVideoEnd = (videoType) => {
@@ -102,13 +102,13 @@ const VideoPlayer = ({
   useEffect(() => {
     // Set aerial video source
     if (aerialVideoRef.current && videoAssets.aerial) {
-      aerialVideoRef.current.src = videoAssets.aerial.s3Key;
+      aerialVideoRef.current.src = videoAssets.aerial.accessUrl;
       aerialVideoRef.current.load();
     }
     
     // Set transition video source
     if (transitionVideoRef.current && videoAssets.transition) {
-      transitionVideoRef.current.src = videoAssets.transition.s3Key;
+      transitionVideoRef.current.src = videoAssets.transition.accessUrl;
       transitionVideoRef.current.load();
     }
   }, [videoAssets]);
@@ -137,7 +137,7 @@ const VideoPlayer = ({
         zoomOutVideoRef.current.load();
       }
     }
-  }, [activeHotspot]);
+  }, [activeHotspot, getVideoSource]);
   
   return (
     <div className="video-player-container">

@@ -1,34 +1,22 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import './styles/index.css';
 import './styles/ErrorBoundary.css';
 
-const router = createBrowserRouter([
-  {
-    path: "/admin/*",
-    element: <App />
-  },
-  {
-    path: "/*",
-    element: <App />
-  }
-], {
-  future: {
-    v7_startTransition: true,
-    v7_relativeSplatPath: true
-  }
-});
-
 const container = document.getElementById('root');
 const root = createRoot(container);
 
+// Temporarily disabling StrictMode for debugging
+// Re-enable for production and regular development
 root.render(
-  <React.StrictMode>
+  // <React.StrictMode>
     <ErrorBoundary>
-      <RouterProvider router={router} />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </ErrorBoundary>
-  </React.StrictMode>
+  // </React.StrictMode>
 );
