@@ -4,7 +4,7 @@ buildCommand = "npm run build"
 
 [deploy]
 startCommand = "NODE_ENV=production npm start"
-healthcheckPath = "/"
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "always"
 restartPolicyMaxRetries = 5
