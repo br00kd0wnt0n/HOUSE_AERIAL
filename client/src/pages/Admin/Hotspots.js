@@ -82,6 +82,9 @@ const Hotspots = () => {
   const [drawingMode, setDrawingMode] = useState(false);
   const [isEditingPoints, setIsEditingPoints] = useState(false);
   
+  // Add state to store the most recently edited coordinates to prevent reverting
+  const [lastEditedCoordinates, setLastEditedCoordinates] = useState(null);
+  
   // Add state for map pin updating
   const [isUpdatingMapPin, setIsUpdatingMapPin] = useState(false);
 
@@ -105,6 +108,9 @@ const Hotspots = () => {
 
   // Add secondaryMode state
   const [secondaryMode, setSecondaryMode] = useState('classic');
+  
+  // Add flag to track when a shape has just been saved to preserve edited coordinates
+  const [shapeSaveInProgress, setShapeSaveInProgress] = useState(false);
 
   // Keep processedHotspots in sync with hotspots when they change
   useEffect(() => {
@@ -253,13 +259,14 @@ const Hotspots = () => {
     
   }, [selectedHotspot?.coordinates, selectedHotspot?._id, drawExistingHotspotsRef, selectedHotspot]);
 
-  // Use the custom drawing hook, passing the hoveredHotspot state
+  // Draw existing hotspots
   const {
     drawExistingHotspots,
     undoLastPoint,
     handleCanvasClick,
     handleCanvasHover,
-    finishDrawing
+    finishDrawing,
+    clearCanvases
   } = useHotspotDrawing(
     canvasRef, 
     hotspots, 
@@ -1020,6 +1027,9 @@ const Hotspots = () => {
     if (!selectedHotspot || points.length < 3) return;
     
     try {
+      // Set flag to indicate we're in the middle of saving a shape
+      setShapeSaveInProgress(true);
+      
       // Calculate the center point for proper map pin positioning
       let centerPoint = {
         x: 0,
@@ -1038,6 +1048,9 @@ const Hotspots = () => {
         console.log("Calculated centerPoint for edited shape:", centerPoint);
       }
       
+      // Save the most recently edited coordinates to prevent them from being lost
+      setLastEditedCoordinates([...points]);
+      
       // Update hotspot with new coordinates and center point
       const result = await updateHotspot(selectedHotspot._id, {
         ...hotspotForm,
@@ -1047,7 +1060,7 @@ const Hotspots = () => {
       });
       
       if (result) {
-        // Clear editing state
+        // Clear editing state but keep lastEditedCoordinates for the subsequent Save Changes operation
         setIsEditingPoints(false);
         setDrawingMode(false);
         
@@ -1066,9 +1079,6 @@ const Hotspots = () => {
             }
           }
         }
-        
-        // Clear points
-        setPoints([]);
         
         // Refresh hotspots data
         await fetchHotspots(selectedLocation._id);
@@ -1115,8 +1125,11 @@ const Hotspots = () => {
         description: error.message || "Failed to update hotspot shape",
         variant: "destructive"
       });
+    } finally {
+      // Clear shape save flag after completion
+      setShapeSaveInProgress(false);
     }
-  }, [selectedHotspot, points, updateHotspot, hotspotForm, setIsEditingPoints, setDrawingMode, setPoints, fetchHotspots, selectedLocation, drawExistingHotspotsRef, toast, canvasRef]);
+  }, [selectedHotspot, points, updateHotspot, hotspotForm, setIsEditingPoints, setDrawingMode, fetchHotspots, selectedLocation, drawExistingHotspotsRef, toast, canvasRef]);
 
   // Custom handler for canvas clicks that handles both adding points and closing the loop
   const handleCanvasClickWrapper = (e) => {
@@ -1335,16 +1348,40 @@ const Hotspots = () => {
     try {
       // Get the center point from existing points or calculate a new one if points changed
       let centerPoint = selectedHotspot.centerPoint;
+      let coordinatesToUse;
       
-      // If we're editing points, recalculate center
-      if (points.length > 0 && isEditingPoints) {
-        const sumX = points.reduce((acc, point) => acc + point.x, 0);
-        const sumY = points.reduce((acc, point) => acc + point.y, 0);
+      // Determine which coordinates to use:
+      // 1. If we have lastEditedCoordinates from a recent shape edit, use those
+      // 2. Otherwise, use the correct coordinates based on editing state
+      if (lastEditedCoordinates && lastEditedCoordinates.length >= 3) {
+        console.log("Using lastEditedCoordinates for update:", lastEditedCoordinates.length, "points");
+        coordinatesToUse = lastEditedCoordinates;
+        
+        // Recalculate center point based on these coordinates
+        const sumX = coordinatesToUse.reduce((acc, point) => acc + point.x, 0);
+        const sumY = coordinatesToUse.reduce((acc, point) => acc + point.y, 0);
         
         centerPoint = {
-          x: sumX / points.length,
-          y: sumY / points.length
+          x: sumX / coordinatesToUse.length,
+          y: sumY / coordinatesToUse.length
         };
+      } else if (isEditingPoints && points.length >= 3) {
+        // If still in editing mode and we have valid points, use current points
+        console.log("Using current points for update:", points.length, "points");
+        coordinatesToUse = points;
+        
+        // Recalculate center point
+        const sumX = coordinatesToUse.reduce((acc, point) => acc + point.x, 0);
+        const sumY = coordinatesToUse.reduce((acc, point) => acc + point.y, 0);
+        
+        centerPoint = {
+          x: sumX / coordinatesToUse.length,
+          y: sumY / coordinatesToUse.length
+        };
+      } else {
+        // Fall back to selected hotspot coordinates
+        console.log("Using selectedHotspot.coordinates for update");
+        coordinatesToUse = selectedHotspot.coordinates;
       }
       
       console.log("Updating hotspot with current state:", {
@@ -1352,13 +1389,13 @@ const Hotspots = () => {
         type: hotspotForm.type,
         mapPin: selectedMapPin ? { id: selectedMapPin._id, name: selectedMapPin.name } : null,
         uiElement: selectedUIElement ? { id: selectedUIElement._id, name: selectedUIElement.name } : null,
-        isEditingPoints
+        coordinatesCount: coordinatesToUse?.length || 0
       });
       
       // Construct update data
       const updateData = {
         ...hotspotForm,
-        coordinates: isEditingPoints ? points : selectedHotspot.coordinates,
+        coordinates: coordinatesToUse,
         centerPoint,
         mapPin: selectedMapPin ? selectedMapPin._id : null
       };
@@ -1385,6 +1422,7 @@ const Hotspots = () => {
         setIsEditingPoints(false);
         setDrawingMode(false);
         setPoints([]);
+        setLastEditedCoordinates(null); // Clear the lastEditedCoordinates
         resetCreationState();
         
         // Refresh hotspots
@@ -1415,24 +1453,8 @@ const Hotspots = () => {
     
     // Load existing coordinates to the editing state
     if (selectedHotspot.coordinates && Array.isArray(selectedHotspot.coordinates)) {
-      // First clear both canvases completely to prevent ghosting
-      if (canvasRef.current) {
-        // Clear main canvas
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Also clear map pins canvas
-        if (canvas.parentElement) {
-          const mapPinsCanvas = canvas.parentElement.querySelector('canvas:nth-child(2)');
-          if (mapPinsCanvas) {
-            const mapPinsCtx = mapPinsCanvas.getContext('2d');
-            mapPinsCtx.clearRect(0, 0, mapPinsCanvas.width, mapPinsCanvas.height);
-          }
-        }
-        
-        console.log("Both canvases cleared before starting point editing");
-      }
+      // First clear both canvases completely to prevent ghosting using our thorough clearing function
+      clearCanvases();
       
       // Clear any previously selected map pin from view while editing
       setSelectedMapPin(null);

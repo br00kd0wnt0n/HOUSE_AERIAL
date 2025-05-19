@@ -103,6 +103,55 @@ const drawPolygon = (ctx, points, fillColor, strokeColor, shouldClosePath = true
   }
 };
 
+// Helper function to thoroughly clear all canvas elements
+const clearCanvases = (canvasRef) => {
+  if (!canvasRef || !canvasRef.current) return;
+  
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  
+  // Begin with a full clear of the main canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // For more thorough clearing, reset the canvas by changing its dimensions slightly
+  const oldWidth = canvas.width;
+  const oldHeight = canvas.height;
+  
+  // This forces a complete reset of the canvas buffer
+  canvas.width = oldWidth;
+  canvas.height = oldHeight;
+  
+  // Also clear any map pins canvas if it exists
+  if (canvas.parentElement) {
+    // Find map pins canvas (usually the second canvas in the container)
+    const mapPinsCanvas = canvas.parentElement.querySelector('canvas:nth-child(2)');
+    if (mapPinsCanvas) {
+      const mapPinsCtx = mapPinsCanvas.getContext('2d');
+      
+      // Clear the map pins canvas
+      mapPinsCtx.clearRect(0, 0, mapPinsCanvas.width, mapPinsCanvas.height);
+      
+      // Reset dimensions to force complete clearing
+      const oldPinsWidth = mapPinsCanvas.width;
+      const oldPinsHeight = mapPinsCanvas.height;
+      mapPinsCanvas.width = oldPinsWidth;
+      mapPinsCanvas.height = oldPinsHeight;
+    }
+  }
+  
+  // Force a dispatch of the clearOnly event to ensure map pins are cleared
+  canvas.dispatchEvent(new CustomEvent('forceMapPinDraw', {
+    detail: {
+      timestamp: Date.now(),
+      source: 'thorough-clear',
+      clearOnly: true,
+      force: true
+    }
+  }));
+  
+  console.log('All canvases thoroughly cleared');
+};
+
 const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, selectHotspot, drawingMode, setDrawingMode, points, setPoints, showDraftPolygon = false, externalHoveredHotspot = undefined, externalSetHoveredHotspot = undefined) => {
   // Use external hover state if provided, otherwise use local state
   const [internalHoveredHotspot, setInternalHoveredHotspot] = useState(null);
@@ -163,8 +212,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     try {
       const ctx = canvas.getContext('2d');
       
-      // Clear canvas - always start with a fresh canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Clear canvas - always start with a fresh canvas using the thorough clearing function
+      clearCanvases(canvasRef);
       
       if (!isHoverUpdate) {
         console.log(`Drawing hotspots on canvas: ${canvas.width}x${canvas.height}, forced: ${force}`);
@@ -702,19 +751,11 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
       // Use a more robust approach to ensure state has updated before redrawing
       setTimeout(() => {
         if (canvasRef.current) {
-          // First completely clear the main canvas to remove any ghost shapes
+          // Thoroughly clear all canvases to prevent ghosting
+          clearCanvases(canvasRef);
+          
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          
-          // Also clear the map pins canvas if it exists
-          if (canvas.parentElement) {
-            const mapPinsCanvas = canvas.parentElement.querySelector('canvas:nth-child(2)');
-            if (mapPinsCanvas) {
-              const mapPinsCtx = mapPinsCanvas.getContext('2d');
-              mapPinsCtx.clearRect(0, 0, mapPinsCanvas.width, mapPinsCanvas.height);
-            }
-          }
           
           // We need to manually update the local points here to ensure proper redraw
           // since the React state update might not be reflected yet
@@ -826,10 +867,10 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     
     // Draw the point immediately instead of waiting for state update
     if (canvasRef.current) {
-      const ctx = canvas.getContext('2d');
+      // Thoroughly clear both canvases to prevent ghosting
+      clearCanvases(canvasRef);
       
-      // Clear canvas COMPLETELY to prevent ghost artifacts
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d');
       
       // Draw existing hotspots faded
       if (hotspots && Array.isArray(hotspots)) {
@@ -915,31 +956,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
       setPoints(currentPoints => [...currentPoints, { ...currentPoints[0] }]);
     }
     
-    // Draw closing line on canvas
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    // First, completely clear both canvases to prevent ghost artifacts
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Also clear the map pins canvas if it exists
-    if (canvas.parentElement) {
-      const mapPinsCanvas = canvas.parentElement.querySelector('canvas:nth-child(2)');
-      if (mapPinsCanvas) {
-        const mapPinsCtx = mapPinsCanvas.getContext('2d');
-        mapPinsCtx.clearRect(0, 0, mapPinsCanvas.width, mapPinsCanvas.height);
-      }
-    }
-    
-    // Force a clean state by explicitly triggering a clearOnly map pins event
-    canvas.dispatchEvent(new CustomEvent('forceMapPinDraw', {
-      detail: {
-        timestamp: Date.now(),
-        source: 'finishDrawing-pre-clear',
-        clearOnly: true,
-        force: true
-      }
-    }));
+    // Thoroughly clear all canvases to prevent ghosting
+    clearCanvases(canvasRef);
     
     // Redraw everything including other hotspots
     drawExistingHotspots(true);
@@ -959,7 +977,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     undoLastPoint,
     handleCanvasClick,
     handleCanvasHover,
-    finishDrawing
+    finishDrawing,
+    clearCanvases: () => clearCanvases(canvasRef) // Export the clearCanvases function
   };
 };
 
