@@ -2,64 +2,96 @@
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  z-index: 10;
+  overflow: visible;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.hotspot {
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: none;
-  background: transparent;
+/* SVG contains the polygon hotspots */
+.hotspot-svg {
+  /* Position is set dynamically in the component to match the video exactly */
+  pointer-events: none;
+}
+
+/* Make polygon elements clickable */
+.hotspot-polygon {
+  fill: rgba(0, 0, 0, 0); /* Completely transparent fill */
+  stroke: rgba(0, 0, 0, 0); /* Completely transparent stroke */
+  stroke-width: 0.5;
+  pointer-events: all;
   cursor: pointer;
-  pointer-events: auto;
-  transform: translate(-50%, -50%);
+  transition: fill 0.2s ease;
 }
 
-.hotspot-indicator {
-  display: block;
-  width: 16px;
-  height: 16px;
-  margin: 12px;
-  border-radius: 50%;
-  background: rgba(229, 9, 20, 0.8);
-  border: 2px solid white;
-  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-  transition: transform 0.2s, background-color 0.2s;
+.hotspot-polygon:hover {
+  fill: rgba(0, 0, 0, 0); /* Keep transparent on hover */
+  stroke: rgba(0, 0, 0, 0); /* Keep transparent on hover */
 }
 
-.hotspot:hover .hotspot-indicator {
-  transform: scale(1.2);
-  background: rgba(229, 9, 20, 1);
+.primary-polygon {
+  fill: rgba(0, 0, 0, 0); /* Completely transparent fill */
+  stroke: rgba(0, 0, 0, 0); /* Completely transparent stroke */
 }
 
-.hotspot-label {
+.primary-polygon:hover {
+  fill: rgba(0, 0, 0, 0); /* Keep transparent on hover */
+  stroke: rgba(0, 0, 0, 0); /* Keep transparent on hover */
+}
+
+.secondary-polygon {
+  fill: rgba(0, 0, 0, 0); /* Completely transparent fill */
+  stroke: rgba(0, 0, 0, 0); /* Completely transparent stroke */
+}
+
+.secondary-polygon:hover {
+  fill: rgba(0, 0, 0, 0); /* Keep transparent on hover */
+  stroke: rgba(0, 0, 0, 0); /* Keep transparent on hover */
+}
+
+/* Map pins and hotspots */
+.hotspot-wrapper {
   position: absolute;
-  left: 50%;
-  bottom: -25px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  z-index: 150;
 }
 
-.hotspot:hover .hotspot-label {
-  opacity: 1;
+.map-pin-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: all;
+  cursor: pointer;
+  /* Add position adjustments to better align with hotspot center */
+  position: relative;
+  transform: translateY(
+    -20px
+  ); /* Offset to account for pin point vs. pin center */
 }
 
-.primary .hotspot-indicator {
-  background: rgba(229, 9, 20, 0.8);
+/* Map pin image */
+.map-pin-image {
+  width: 80px; /* Increased from 40px */
+  height: 80px; /* Increased from 40px */
+  object-fit: contain;
+  transform-origin: center bottom;
+  /* Add slight bobbing animation */
+  animation: pin-bob 2s ease-in-out infinite;
+  /* Add subtle shadow for better visibility */
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
 }
 
-.secondary .hotspot-indicator {
-  background: rgba(255, 255, 255, 0.8);
+@keyframes pin-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
 }

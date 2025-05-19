@@ -7,16 +7,20 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "dev": "./node_modules/.bin/nodemon server/index.js",
+    "dev": "NODE_ENV=development ./node_modules/.bin/nodemon server/index.js",
+    "client:dev": "cd client && npm run start",
+    "dev:full": "concurrently \"npm run dev\" \"npm run client:dev\"",
     "build": "cd client && npm install && npm run build && cd .. && npm install",
     "railway:prepare": "mkdir -p server/storage/uploads/AERIAL server/storage/uploads/Button server/storage/uploads/DiveIn server/storage/uploads/FloorLevel server/storage/uploads/MapPin server/storage/uploads/Transition server/storage/uploads/UIElement server/storage/uploads/ZoomOut",
     "prestart": "npm run railway:prepare"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "classnames": "^2.5.1",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.21.2",
+    "lucide-react": "^0.511.0",
     "mongoose": "^7.8.7",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
@@ -24,6 +28,7 @@
     "react-player": "^2.16.0"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "nodemon": "^3.1.0"
   }
 }

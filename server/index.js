@@ -64,10 +64,6 @@ app.post('/health', (req, res) => {
   res.status(200).send('Health OK');
 });
 
-app.get('/', (req, res) => {
-  res.status(200).send('Netflix House Aerial Experience API');
-});
-
 // MongoDB setup
 mongoose.set('strictQuery', true);
 
@@ -82,6 +78,7 @@ const connectDB = async () => {
 };
 
 // Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/hotspots', require('./routes/hotspots'));
@@ -89,6 +86,17 @@ app.use('/api/playlists', require('./routes/playlists'));
 
 // Serve static files from the uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'storage/uploads')));
+
+// Root API route - only used when not in production or for API health check
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/', (req, res) => {
+    res.status(200).send('Netflix House Aerial Experience API');
+  });
+} else {
+  app.get('/api', (req, res) => {
+    res.status(200).send('Netflix House Aerial Experience API');
+  });
+}
 
 // Serve React client build files in production
 if (process.env.NODE_ENV === 'production') {

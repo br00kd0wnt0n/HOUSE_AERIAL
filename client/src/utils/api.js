@@ -2,9 +2,9 @@
 
 import axios from 'axios';
 
-// Create axios instance with base URL
-export const instance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3001/api',
+// Create axios instance with base config
+const instance = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   timeout: 10000, // 10 seconds
   headers: {
     'Content-Type': 'application/json',
@@ -13,7 +13,7 @@ export const instance = axios.create({
 });
 
 // Ensure a consistent backend URL to use in other places
-export const baseBackendUrl = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:3001';
+export const baseBackendUrl = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || '';
 
 // Add request interceptor for logging and error handling
 instance.interceptors.request.use(
@@ -31,101 +31,61 @@ instance.interceptors.request.use(
 // Add response interceptor for logging and error handling
 instance.interceptors.response.use(
   response => {
-    console.log('Response from:', response.config.url, response.status);
+    console.log('Received API response from:', response.config.url);
     return response;
   },
   error => {
-    console.error('Request failed:', error.config?.url, error.message);
-    
-    // Handle specific error cases
-    if (error.code === 'ECONNABORTED') {
-      console.error('Request timed out');
-      error.message = 'Request timed out. Please try again.';
-    } else if (!error.response) {
-      console.error('Network error - no response received');
-      error.message = 'Network error. Please check your connection.';
-    } else if (error.response.status === 404) {
-      console.error('Resource not found');
-      error.message = 'Resource not found. Please check the URL.';
-    } else if (error.response.status === 500) {
-      console.error('Server error');
-      error.message = 'Server error. Please try again later.';
-    }
-    
     if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-      
-      // Add server error message if available
-      if (error.response.data?.error) {
-        error.message = error.response.data.error;
-      }
+      // The request was made and the server responded with an error status
+      console.error('API error:', error.response.status, error.response.data);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received for request:', error.request);
+    } else {
+      // Something happened in setting up the request
+      console.error('Error setting up request:', error.message);
     }
     
     return Promise.reject(error);
   }
 );
 
-// Helper function to transform s3Key to local URL
-export const getVideoUrl = (s3Key) => {
-  if (!s3Key) return null;
+// Format video URLs to ensure they have the proper prefix
+export const formatVideoUrl = (url) => {
+  if (!url) return null;
   
-  console.log('Original s3Key:', s3Key);
+  // Skip if already a full URL
+  if (url.startsWith('http')) return url;
   
-  // Check if it's already in the correct format (API URL)
-  if (s3Key.startsWith('/api/')) {
-    console.log('s3Key already in correct format:', s3Key);
-    return s3Key;
+  if (url.startsWith('/api/')) {
+    // URL already has /api/ prefix, just append to base URL
+    return `${baseBackendUrl}${url}`;
   }
   
-  // Handle location-based paths
-  // Format: 'assets/Netflix_House_Philadelphia/AERIAL/filename.mp4'
-  if (s3Key.includes('Netflix_House_Philadelphia') || s3Key.includes('Netflix_House_Dallas')) {
-    const parts = s3Key.split('/');
-    // Remove 'assets/' if present
-    if (parts[0] === 'assets') {
-      parts.shift();
-    }
-    
-    // Extract location, type, and filename
-    const location = parts[0]; // e.g., Netflix_House_Philadelphia
-    const type = parts[1];     // e.g., AERIAL
-    const filename = parts.slice(2).join('/'); // In case filename has slashes
-    
-    // Construct the URL with the correct structure
-    const url = `/api/assets/file/${location}/${type}/${filename}`;
-    console.log('Transformed location-based URL:', url);
-    return url;
-  }
-  
-  // Handle non-location paths (legacy format)
-  // Remove 'assets/' prefix if present
-  const path = s3Key.startsWith('assets/') ? s3Key.slice(7) : s3Key;
-  
-  // Split into type and filename
-  const [type, ...filenameParts] = path.split('/');
-  const filename = filenameParts.join('/');
-  
-  // Encode the filename to handle spaces and special characters
-  const encodedFilename = encodeURIComponent(filename);
-  
-  // Construct the URL with encoded filename
-  const url = `/api/assets/file/${type}/${encodedFilename}`;
-  console.log('Transformed URL:', url);
-  
-  return url;
+  // Add /api/ prefix to other URLs
+  return url.startsWith('/') 
+    ? `${baseBackendUrl}/api${url}` 
+    : `${baseBackendUrl}/api/${url}`;
 };
 
 // API methods
 const api = {
   instance, // Export the instance
+  
+  // Authentication endpoints
+  getAuthStatus: () => instance.get('/auth/status'),
+  initializePassword: (password) => instance.post('/auth/initialize', { password }),
+  login: (password) => instance.post('/auth/login', { password }),
+  changePassword: (currentPassword, newPassword) => 
+    instance.post('/auth/change-password', { currentPassword, newPassword }),
+  
   // Location endpoints
   getLocations: () => instance.get('/locations'),
   getLocation: (id) => instance.get(`/locations/${id}`),
   createLocation: (data) => instance.post('/locations', data),
   updateLocation: (id, data) => instance.put(`/locations/${id}`, data),
   deleteLocation: (id) => instance.delete(`/locations/${id}`),
-
+  
   // Asset endpoints
   getAssets: (type, locationId) => {
     let url = '/assets';
@@ -168,6 +128,84 @@ const api = {
     }
   },
   getAsset: (id) => instance.get(`/assets/${id}`),
+  getAssetById: async (id) => {
+    try {
+      if (!id) {
+        console.error("Cannot fetch asset - missing id");
+        return { data: null };
+      }
+      
+      console.log(`Fetching asset by ID: ${id}`);
+      
+      // Add retry logic for network issues
+      const maxRetries = 3;
+      let retries = 0;
+      let response;
+      
+      while (retries < maxRetries) {
+        try {
+          response = await instance.get(`/assets/${id}`);
+          break; // If successful, exit the retry loop
+        } catch (error) {
+          retries++;
+          const currentRetries = retries; // Store in local constant to avoid closure issues
+          console.warn(`Attempt ${currentRetries}/${maxRetries} failed for asset ID ${id}: ${error.message}`);
+          
+          if (currentRetries >= maxRetries) {
+            throw error; // Re-throw after max retries
+          }
+          
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, currentRetries - 1)));
+        }
+      }
+      
+      // Check if we have a valid response
+      if (!response || !response.data) {
+        console.error(`No data received for asset ID: ${id}`);
+        return { data: null };
+      }
+      
+      // Ensure the asset has a properly formatted accessUrl
+      const asset = response.data;
+      if (asset) {
+        console.log(`Fetched asset: ${asset.name}, type: ${asset.type}, accessUrl: ${asset.accessUrl}`);
+        
+        if (asset.accessUrl) {
+          // Make sure we have a properly formatted accessUrl
+          if (!asset.accessUrl.startsWith('/api/') && !asset.accessUrl.startsWith('http')) {
+            // Use baseBackendUrl when constructing absolute URLs
+            const originalUrl = asset.accessUrl;
+            asset.accessUrl = asset.accessUrl.startsWith('/') ? 
+              `${baseBackendUrl}${asset.accessUrl.startsWith('/api/') ? asset.accessUrl : `/api${asset.accessUrl}`}` : 
+              `${baseBackendUrl}/api/assets/file/${asset.type}/${asset.accessUrl}`;
+            
+            console.log(`Reformatted asset URL from ${originalUrl} to ${asset.accessUrl}`);
+          }
+        } else {
+          console.error(`Asset ${asset.name} (${id}) has no accessUrl - this will cause display issues`);
+        }
+      } else {
+        console.warn(`No asset data returned for ID: ${id}`);
+      }
+      
+      return { data: asset };
+    } catch (error) {
+      console.error(`Error fetching asset by ID ${id}:`, error);
+      const errorMsg = error.response ? 
+        `Status: ${error.response.status}, Message: ${error.response.data?.error || 'Unknown error'}` : 
+        `Network error: ${error.message}`;
+      console.error(`Detailed error for asset ID ${id}: ${errorMsg}`);
+      
+      // Return a structured error rather than throwing
+      return { 
+        data: null, 
+        error: true, 
+        message: errorMsg,
+        originalError: error
+      };
+    }
+  },
   createAsset: (formData) => instance.post('/assets', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
@@ -181,33 +219,26 @@ const api = {
   deleteAsset: (id) => instance.delete(`/assets/${id}`),
 
   // Hotspot endpoints
-  getHotspots: (locationId, type) => {
-    let url = '/hotspots';
-    const params = {};
-    if (locationId) params.location = locationId;
-    if (type) params.type = type;
-    return instance.get(url, { params });
-  },
-  getHotspotsByLocation: (locationId) => instance.get(`/hotspots/location/${locationId}`),
+  getHotspots: () => instance.get('/hotspots'),
+  getHotspotsByLocation: (locationId) => instance.get('/hotspots', {
+    params: { location: locationId }
+  }),
   getHotspot: (id) => instance.get(`/hotspots/${id}`),
   createHotspot: (data) => instance.post('/hotspots', data),
   updateHotspot: (id, data) => instance.put(`/hotspots/${id}`, data),
   deleteHotspot: (id) => instance.delete(`/hotspots/${id}`),
 
   // Playlist endpoints
-  getPlaylists: (locationId, hotspotId) => {
-    let url = '/playlists';
-    const params = {};
-    if (locationId) params.location = locationId;
-    if (hotspotId) params.hotspot = hotspotId;
-    return instance.get(url, { params });
-  },
-  getPlaylistsByLocation: (locationId) => instance.get(`/playlists/location/${locationId}`),
-  getPlaylistByHotspot: (hotspotId) => instance.get(`/playlists/hotspot/${hotspotId}`),
+  getPlaylists: () => instance.get('/playlists'),
   getPlaylist: (id) => instance.get(`/playlists/${id}`),
+  getPlaylistByHotspot: (hotspotId) => instance.get(`/playlists/hotspot/${hotspotId}`),
   createPlaylist: (data) => instance.post('/playlists', data),
   updatePlaylist: (id, data) => instance.put(`/playlists/${id}`, data),
-  deletePlaylist: (id) => instance.delete(`/playlists/${id}`)
+  deletePlaylist: (id) => instance.delete(`/playlists/${id}`),
+
+  // Analytics endpoints
+  trackEvent: (data) => instance.post('/analytics/events', data),
+  getEvents: () => instance.get('/analytics/events'),
 };
 
 export default api;

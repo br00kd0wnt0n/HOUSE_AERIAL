@@ -37,6 +37,10 @@ exports.createAsset = async (req, res) => {
     const { name, type, location } = req.body;
     const file = req.file;
     
+    // Log raw request body and form data for debugging
+    console.log(`[AssetController] Raw request body keys:`, Object.keys(req.body));
+    console.log(`[AssetController] Creating asset: name=${name}, type=${type}, location=${JSON.stringify(location)}`);
+    
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
@@ -63,6 +67,24 @@ exports.createAsset = async (req, res) => {
     // Create access URL for the API
     const accessUrl = `/api/assets/file/${type}/${filename}`;
     
+    // Process location field - handle String/ObjectId/null properly
+    let locationId = null;
+    // Check if location is present and valid
+    if (location && location !== 'null' && location !== 'undefined' && location !== '') {
+      // MongoDB ObjectId is 24 characters
+      if (typeof location === 'string' && location.match(/^[0-9a-fA-F]{24}$/)) {
+        locationId = location;
+        console.log(`[AssetController] Valid location ID detected: ${locationId}`);
+      } else if (typeof location === 'object' && location._id) {
+        locationId = location._id;
+        console.log(`[AssetController] Location object with ID detected: ${locationId}`);
+      } else {
+        console.log(`[AssetController] Unexpected location format:`, location);
+      }
+    } else {
+      console.log(`[AssetController] No location provided or invalid value:`, location);
+    }
+    
     // Create new asset in database
     const asset = new Asset({
       name,
@@ -71,13 +93,17 @@ exports.createAsset = async (req, res) => {
       accessUrl,
       fileType,
       size: file.size,
-      location: location || null
+      location: locationId
     });
     
     await asset.save();
-    res.status(201).json(asset);
+    console.log(`[AssetController] Asset created successfully: ${asset._id}, name=${asset.name}, type=${asset.type}, location=${asset.location || 'none'}`);
+    
+    // Include the location in the response
+    const populatedAsset = await Asset.findById(asset._id).populate('location');
+    res.status(201).json(populatedAsset);
   } catch (error) {
-    console.error('Error creating asset:', error);
+    console.error('[AssetController] Error creating asset:', error);
     res.status(500).json({ error: 'Failed to create asset' });
   }
 };
@@ -102,6 +128,8 @@ exports.updateAsset = async (req, res) => {
     const { name, type, location } = req.body;
     const file = req.file;
     
+    console.log(`Updating asset ${req.params.id}: name=${name}, type=${type}, location=${location || 'none'}`);
+    
     const asset = await Asset.findById(req.params.id);
     if (!asset) {
       return res.status(404).json({ error: 'Asset not found' });
@@ -110,7 +138,15 @@ exports.updateAsset = async (req, res) => {
     // Update fields
     if (name) asset.name = name;
     if (type) asset.type = type;
-    if (location !== undefined) asset.location = location;
+    
+    // Process location field
+    if (location === null || location === 'null' || location === 'undefined' || location === '') {
+      console.log(`Clearing location for asset: ${asset.name}`);
+      asset.location = null;
+    } else if (location !== undefined) {
+      console.log(`Setting location ID: ${location} for asset: ${asset.name}`);
+      asset.location = location;
+    }
     
     // If new file is provided, update the file
     if (file) {
@@ -144,6 +180,7 @@ exports.updateAsset = async (req, res) => {
     }
     
     await asset.save();
+    console.log(`Asset updated successfully: ${asset._id}, name: ${asset.name}, location: ${asset.location || 'none'}`);
     res.json(asset);
   } catch (error) {
     console.error('Error updating asset:', error);

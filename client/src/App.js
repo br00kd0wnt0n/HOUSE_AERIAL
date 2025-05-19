@@ -1,9 +1,10 @@
 // client/src/App.js - Main application component
 
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { VideoProvider } from './context/VideoContext';
-import { AdminProvider } from './context/AdminContext';
+import { AdminProvider, useAdmin } from './context/AdminContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from './components/ui/use-toast';
 import Menu from './pages/Menu';
 import Experience from './pages/Experience';
@@ -11,14 +12,41 @@ import Assets from './pages/Admin/Assets';
 import Locations from './pages/Admin/Locations';
 import Hotspots from './pages/Admin/Hotspots';
 import Playlists from './pages/Admin/Playlists';
+import Settings from './pages/Admin/Settings';
 import AdminNav from './components/AdminPanel/AdminNav';
+import LoginForm from './components/AdminPanel/LoginForm';
 import api from './utils/api';
 import './styles/index.css'; // Only import the main Tailwind CSS file
+import { Button } from './components/ui/button';
 
-function App() {
-  const [isAdminMode, setIsAdminMode] = useState(false);
+// Admin page titles
+const PAGE_TITLES = {
+  '/admin/assets': 'Asset Management',
+  '/admin/locations': 'Locations',
+  '/admin/hotspots': 'Hotspots',
+  '/admin/playlists': 'Playlists',
+  '/admin/settings': 'Settings',
+};
+
+// Main app content component - wrapped by AdminProvider and AuthProvider
+function AppContent() {
+  const { isAdminMode, setIsAdminMode } = useAdmin();
+  const { isAuthenticated, isInitialized, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [hasConfig, setHasConfig] = useState(false);
+  const location = useLocation();
+  
+  // Add a state to control location creation
+  const [showLocationCreate, setShowLocationCreate] = useState(false);
+
+  // Get the current page title
+  const getPageTitle = () => {
+    const path = Object.keys(PAGE_TITLES).find(path => 
+      location.pathname === path || 
+      (location.pathname === '/admin' && path === '/admin/locations')
+    );
+    return PAGE_TITLES[path] || 'Admin Panel';
+  };
 
   // Check if we have configuration on load
   useEffect(() => {
@@ -57,21 +85,23 @@ function App() {
       }
     };
     
-    // Check if we're on an admin route
-    const isAdminRoute = window.location.pathname.startsWith('/admin');
-    if (isAdminRoute) {
-      setIsAdminMode(true);
-    }
-    
     window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [setIsAdminMode]);
+
+  // Check if we're on an admin route and update isAdminMode
+  useEffect(() => {
+    const isAdminRoute = location.pathname.startsWith('/admin');
+    if (isAdminRoute && !isAdminMode) {
+      setIsAdminMode(true);
+    }
+  }, [location.pathname, isAdminMode, setIsAdminMode]);
 
   // If loading, always show loading screen
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-netflix-black text-white">
         <div className="relative w-16 h-16 mb-6">
@@ -82,54 +112,101 @@ function App() {
     );
   }
 
-  // If in admin mode, always render admin panel regardless of hasConfig
+  // If in admin mode, check authentication before rendering
   if (isAdminMode) {
+    // If we're in admin mode but not authenticated, show login form
+    if (!isAuthenticated && isInitialized) {
+      return <LoginForm />;
+    }
+    
+    // If system is not initialized (first time), show password setup
+    if (!isInitialized) {
+      return <LoginForm />;
+    }
+    
+    // If authenticated, render admin panel
     return (
-      <div className="min-h-screen bg-netflix-black text-white">
-        <AdminProvider>
-          <div className="flex min-h-screen">
-            <AdminNav />
-            <main className="flex-1 pl-64">
+      <div className="h-screen bg-netflix-black text-white flex flex-col overflow-hidden">
+        <div className="flex h-full">
+          <AdminNav />
+          <main className="flex-1 pl-44 flex flex-col h-full overflow-hidden">
+            <header className="flex items-center justify-between border-b border-white/10 p-4 h-16 bg-netflix-black sticky top-0 z-10">
+              <h1 className="text-xl font-bold text-netflix-red">{getPageTitle()}</h1>
+              
+              {/* Conditionally show actions based on current page */}
+              {location.pathname === '/admin/locations' && (
+                <div className="flex items-center">
+                  <Button 
+                    className="bg-netflix-red hover:bg-netflix-red/80"
+                    onClick={() => setShowLocationCreate(true)}
+                  >
+                    Add New Location
+                  </Button>
+                </div>
+              )}
+            </header>
+            <div className="flex-1 overflow-auto">
               <Routes>
-                <Route path="/admin/locations" element={<Locations />} />
+                <Route path="/admin/locations" element={<Locations showCreate={showLocationCreate} onCreateShown={() => setShowLocationCreate(false)} />} />
                 <Route path="/admin/hotspots" element={<Hotspots />} />
                 <Route path="/admin/playlists" element={<Playlists />} />
                 <Route path="/admin/assets" element={<Assets />} />
+                <Route path="/admin/settings" element={<Settings />} />
                 {/* Default admin route */}
-                <Route path="/admin" element={<Navigate to="/admin/assets" replace />} />
-                 {/* Fallback for any other admin paths */}
-                <Route path="/admin/*" element={<Navigate to="/admin/assets" replace />} />
+                <Route path="/admin" element={<Navigate to="/admin/locations" replace />} />
+                {/* Fallback for any other admin paths */}
+                <Route path="/admin/*" element={<Navigate to="/admin/locations" replace />} />
+                {/* Catch any other route and redirect to admin assets when in admin mode */}
+                <Route path="*" element={<Navigate to="/admin/locations" replace />} />
               </Routes>
-            </main>
-          </div>
-          <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-        </AdminProvider>
+            </div>
+          </main>
+        </div>
+        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       </div>
     );
   }
 
-  // For non-admin routes, check hasConfig
+  // If not in admin mode, check if we have configuration
+  if (!hasConfig) {
+    // If no configuration but has accessed the app non-admin, show error
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-netflix-black text-white p-6 text-center">
+        <h1 className="text-netflix-red text-3xl font-bold mb-4">Netflix House Aerial Experience</h1>
+        <p className="text-xl mb-8">No configuration found. Please set up the system through the admin panel.</p>
+        <button
+          className="bg-netflix-red text-white px-6 py-3 rounded hover:bg-netflix-red/80 transition"
+          onClick={() => setIsAdminMode(true)}
+        >
+          Go to Admin Panel
+        </button>
+      </div>
+    );
+  }
+
+  // Show normal application view
   return (
-    <div className="min-h-screen bg-netflix-black text-white">
-      <VideoProvider>
+    <VideoProvider>
+      <div className="min-h-screen bg-netflix-black text-white">
         <Routes>
-          {hasConfig ? (
-            <>
-              <Route path="/experience/:locationId" element={<Experience />} />
-              <Route path="/" element={<Menu />} />
-            </>
-          ) : (
-            <Route path="*" element={
-              <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
-                <h2 className="text-2xl font-bold text-netflix-red mb-4">Netflix House Experience Setup Required</h2>
-                <p className="text-netflix-lightgray mb-2">This experience needs to be configured in the admin panel before it can be used.</p>
-                <p className="text-netflix-lightgray">Press Ctrl+Shift+A to access the admin panel and complete the setup.</p>
-              </div>
-            } />
-          )}
+          <Route path="/" element={<Menu />} />
+          <Route path="/experience/:locationId" element={<Experience />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </VideoProvider>
-    </div>
+        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+      </div>
+    </VideoProvider>
+  );
+}
+
+// Main App component that wraps with providers
+function App() {
+  return (
+    <AuthProvider>
+      <AdminProvider>
+        <AppContent />
+      </AdminProvider>
+    </AuthProvider>
   );
 }
 

@@ -31,6 +31,11 @@ const HotspotSchema = new mongoose.Schema({
     x: Number,
     y: Number
   },
+  // Reference to the map pin asset
+  mapPin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Asset'
+  },
   // For SECONDARY hotspots: information panel content
   infoPanel: {
     title: String,
@@ -39,6 +44,11 @@ const HotspotSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     }
+  },
+  // For SECONDARY hotspots: UI element to display
+  uiElement: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Asset'
   },
   isActive: {
     type: Boolean,

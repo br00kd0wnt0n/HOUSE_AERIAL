@@ -10,7 +10,9 @@ import { Button } from '../../components/ui/button';
 const HotspotList = ({
   hotspots = [],
   selectedHotspot,
+  hoveredHotspot,
   selectHotspot,
+  setHoveredHotspot,
   startHotspotCreation,
   isLoading,
   isSaving,
@@ -42,9 +44,13 @@ const HotspotList = ({
                   className={`flex items-center p-2 rounded-sm cursor-pointer transition-colors ${
                     selectedHotspot && selectedHotspot._id === hotspot._id 
                       ? 'bg-netflix-red/20 text-white border border-netflix-red' 
-                      : 'hover:bg-netflix-gray/20 border border-netflix-gray/50'
+                      : hoveredHotspot && hoveredHotspot._id === hotspot._id
+                        ? 'bg-orange-500/20 text-white border border-orange-500' 
+                        : 'hover:bg-netflix-gray/20 border border-netflix-gray/50'
                   }`}
                   onClick={() => selectHotspot(hotspot)}
+                  onMouseEnter={() => setHoveredHotspot && setHoveredHotspot(hotspot)}
+                  onMouseLeave={() => setHoveredHotspot && setHoveredHotspot(null)}
                 >
                   <div className={`w-3 h-3 rounded-full mr-2 ${
                     hotspot.type === 'PRIMARY' ? 'bg-netflix-red' : 'bg-blue-500'

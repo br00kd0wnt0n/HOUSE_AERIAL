@@ -168,6 +168,12 @@ export function VideoProvider({ children }) {
   
   // Handle hotspot click
   const handleHotspotClick = async (hotspot) => {
+    // If hotspot is null (called from InfoPanel close), just clear the active hotspot
+    if (!hotspot) {
+      setActiveHotspot(null);
+      return;
+    }
+    
     setActiveHotspot(hotspot);
     
     // Only handle PRIMARY hotspot video sequences
@@ -178,7 +184,13 @@ export function VideoProvider({ children }) {
         
         console.log('Playlist fetched for hotspot:', playlist);
         
-        // Set video sequence and start playback
+        // First check if playlist.sequence exists
+        if (!playlist.sequence) {
+          console.error('Playlist is missing sequence property. Playlist requires configuration in Admin Panel.');
+          return;
+        }
+        
+        // Set video sequence and start playback only if all videos are present
         if (playlist.sequence.diveInVideo && 
             playlist.sequence.floorLevelVideo && 
             playlist.sequence.zoomOutVideo) {
@@ -196,14 +208,22 @@ export function VideoProvider({ children }) {
             playlist.sequence.zoomOutVideo.accessUrl = formatVideoUrl(playlist.sequence.zoomOutVideo.accessUrl);
           }
           
+          // Store the sequence in state
           setVideoSequence({
             diveIn: playlist.sequence.diveInVideo,
             floorLevel: playlist.sequence.floorLevelVideo,
             zoomOut: playlist.sequence.zoomOutVideo
           });
           
-          // Start playing the sequence
-          setCurrentVideo('diveIn');
+          // Small artificial delay to ensure videos are fully preloaded
+          // This prevents the spinner from appearing during transitions
+          setTimeout(() => {
+            // Start playing the sequence
+            setCurrentVideo('diveIn');
+          }, 50); // 50ms delay is imperceptible but helps with preloading
+        } else {
+          console.error('Playlist is incomplete. One or more videos missing.');
+          // Show visual feedback to the user (maybe a toast notification)
         }
       } catch (error) {
         console.error('Error fetching playlist:', error);

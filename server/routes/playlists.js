@@ -6,9 +6,9 @@ const playlistController = require('../controllers/playlistcontroller');
 
 // Routes
 router.get('/', playlistController.getPlaylists);
-router.get('/:id', playlistController.getPlaylist);
-router.put('/:id', playlistController.updatePlaylist);
 router.get('/hotspot/:hotspotId', playlistController.getPlaylistByHotspot);
 router.get('/location/:locationId', playlistController.getPlaylistsByLocation);
+router.get('/:id', playlistController.getPlaylist);
+router.put('/:id', playlistController.updatePlaylist);
 
 module.exports = router;

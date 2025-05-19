@@ -4,6 +4,8 @@ const Location = require('../models/location');
 const Hotspot = require('../models/hotspot');
 const Playlist = require('../models/playlist');
 const Asset = require('../models/asset');
+const fs = require('fs');
+const path = require('path');
 
 // Get all locations
 exports.getLocations = async (req, res) => {
@@ -88,27 +90,44 @@ exports.deleteLocation = async (req, res) => {
       return res.status(404).json({ error: 'Location not found' });
     }
     
-    // Check if location has associated hotspots
-    const hotspotCount = await Hotspot.countDocuments({ location: location._id });
-    if (hotspotCount > 0) {
-      return res.status(400).json({ error: 'Cannot delete location with associated hotspots. Please delete the hotspots first.' });
+    // Delete all associated assets and their files
+    const assets = await Asset.find({ location: location._id });
+    
+    // Delete physical files first
+    for (const asset of assets) {
+      try {
+        if (fs.existsSync(asset.filePath)) {
+          await fs.promises.unlink(asset.filePath);
+          console.log(`Deleted file: ${asset.filePath}`);
+        } else {
+          console.warn(`File not found at path: ${asset.filePath}`);
+        }
+      } catch (fileError) {
+        console.warn('Could not delete file:', fileError);
+      }
     }
     
-    // Check if location has associated assets
-    const assetCount = await Asset.countDocuments({ location: location._id });
-    if (assetCount > 0) {
-      return res.status(400).json({ error: 'Cannot delete location with associated assets. Please delete the assets first.' });
-    }
+    // Delete asset documents
+    await Asset.deleteMany({ location: location._id });
+    console.log(`Deleted ${assets.length} assets for location: ${location.name}`);
     
-    // Check if location has associated playlists
-    const playlistCount = await Playlist.countDocuments({ location: location._id });
-    if (playlistCount > 0) {
-      return res.status(400).json({ error: 'Cannot delete location with associated playlists. Please delete the playlists first.' });
-    }
+    // Delete associated playlists
+    const deletedPlaylists = await Playlist.deleteMany({ location: location._id });
+    console.log(`Deleted ${deletedPlaylists.deletedCount} playlists for location: ${location.name}`);
+    
+    // Delete associated hotspots
+    const deletedHotspots = await Hotspot.deleteMany({ location: location._id });
+    console.log(`Deleted ${deletedHotspots.deletedCount} hotspots for location: ${location.name}`);
     
     // Delete location
     await Location.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Location deleted successfully' });
+    
+    res.json({ 
+      message: 'Location deleted successfully',
+      deletedAssets: assets.length,
+      deletedHotspots: deletedHotspots.deletedCount,
+      deletedPlaylists: deletedPlaylists.deletedCount
+    });
   } catch (error) {
     console.error('Error deleting location:', error);
     res.status(500).json({ error: 'Failed to delete location' });

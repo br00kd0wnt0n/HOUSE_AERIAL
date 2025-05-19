@@ -24,8 +24,11 @@ module.exports = {
           red: "#E50914",
           darkred: "#B20710",
           black: "#141414",
+          'darker-gray': "#191919",
           dark: "#1f1f1f",
           gray: "#333333",
+          'medium-gray': "#444444",
+          'light-gray': "#8c8c8c",
           lightgray: "#999999",
         },
         primary: {

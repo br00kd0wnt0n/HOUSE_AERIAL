@@ -1,6 +1,6 @@
 // client/src/pages/Admin/Locations.js - Location management page
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 
 // Import shadcn/ui components
@@ -27,7 +27,7 @@ import { useToast } from '../../components/ui/use-toast';
 import { DeleteConfirmation } from '../../components/ui/DeleteConfirmation';
 import './AdminPages.css';
 
-const Locations = () => {
+const Locations = ({ showCreate, onCreateShown }) => {
   const { 
     locations,
     createLocation,
@@ -55,15 +55,19 @@ const Locations = () => {
     locationName: ''
   });
 
+  // Listen for props change to open the creation dialog
+  useEffect(() => {
+    if (showCreate) {
+      setIsCreating(true);
+      // Tell the parent that we've shown the dialog
+      onCreateShown && onCreateShown();
+    }
+  }, [showCreate, onCreateShown]);
+  
   // Form handlers
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  }, []);
-  
-  const handleCreateClick = useCallback(() => {
-    setFormData({ name: '', description: '' });
-    setIsCreating(true);
   }, []);
   
   const handleEditClick = useCallback((location) => {
@@ -160,10 +164,10 @@ const Locations = () => {
     return [...(locations || [])].sort((a, b) => a.name.localeCompare(b.name));
   }, [locations]);
   
-  // Loading state
+  // Show loading state
   if (isLoading) {
     return (
-      <div className="p-6 w-full min-w-[1000px] h-screen overflow-y-auto bg-netflix-black text-white flex flex-col items-center justify-center">
+      <div className="p-6 flex flex-col items-center justify-center h-full bg-netflix-black text-white">
         <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
         <p className="mt-4 text-lg">Loading locations...</p>
       </div>
@@ -171,15 +175,21 @@ const Locations = () => {
   }
   
   return (
-    <div className="p-6 w-full min-w-[1000px] h-screen overflow-y-auto bg-netflix-black text-white">
-      <div className="flex justify-between items-center border-b border-netflix-gray pb-3 mb-6">
-        <h1 className="text-2xl font-bold text-netflix-red">Location Management</h1>
-        <Button onClick={handleCreateClick}>Create Location</Button>
+    <div className="p-6 bg-netflix-black text-white" data-component="locations">
+      {/* Add New Location button is now moved to App.js header */}
+      <div className="absolute top-4 right-8 hidden">
+        <Button 
+          onClick={() => setIsCreating(true)}
+          className="bg-netflix-red hover:bg-netflix-red/80"
+          data-action="add-location"
+        >
+          Add New Location
+        </Button>
       </div>
       
       {sortedLocations.length === 0 ? (
         <div className="bg-netflix-dark p-8 rounded-md text-center">
-          <p className="text-lg text-netflix-lightgray">No locations found. Click the "Create Location" button to add a new location.</p>
+          <p className="text-lg text-netflix-lightgray">No locations found. Click the "Add New Location" button to add a new location.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -250,18 +260,9 @@ const Locations = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsCreating(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleCreateSubmit}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Creating...' : 'Create'}
+            <Button variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
+            <Button onClick={handleCreateSubmit} disabled={isSaving}>
+              {isSaving ? 'Creating...' : 'Create Location'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -275,11 +276,11 @@ const Locations = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-name" className="text-right">
+              <Label htmlFor="name" className="text-right">
                 Name
               </Label>
               <Input
-                id="edit-name"
+                id="name"
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
@@ -288,11 +289,11 @@ const Locations = () => {
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-description" className="text-right">
+              <Label htmlFor="description" className="text-right">
                 Description
               </Label>
               <Textarea
-                id="edit-description"
+                id="description"
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
@@ -301,31 +302,24 @@ const Locations = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsEditing(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleEditSubmit}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+            <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+            <Button onClick={handleEditSubmit} disabled={isSaving}>
+              {isSaving ? 'Updating...' : 'Update Location'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       
-      {/* Delete Confirmation */}
+      {/* Delete confirmation dialog */}
       <DeleteConfirmation
         isOpen={deleteConfirmation.isOpen}
-        title="Delete Location"
-        description={`Are you sure you want to delete "${deleteConfirmation.locationName}"? This action cannot be undone.`}
+        onClose={() => setDeleteConfirmation(prev => ({ ...prev, isOpen: false }))}
         onConfirm={performDelete}
-        onCancel={() => setDeleteConfirmation(prev => ({ ...prev, isOpen: false }))}
-        isDeleting={isSaving}
+        title="Delete Location"
+        description="Are you sure you want to delete this location? This action cannot be undone, and all associated assets and hotspots will also be removed."
+        itemName={deleteConfirmation.locationName}
+        confirmText="Delete"
+        cancelText="Cancel"
       />
     </div>
   );

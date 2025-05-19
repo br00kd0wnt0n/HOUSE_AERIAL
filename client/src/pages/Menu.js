@@ -4,11 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVideo } from '../context/VideoContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import api from '../utils/api';
+import api, { baseBackendUrl } from '../utils/api';
 import '../styles/Menu.css';
-
-// Get API base URL from environment or use a default
-const API_BASE_URL = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://localhost:3001';
 
 const Menu = () => {
   const navigate = useNavigate();
@@ -111,10 +108,10 @@ const Menu = () => {
                 <img 
                   src={
                     hoveredButton === location._id && buttonAssets[location._id].hover
-                      ? `${API_BASE_URL}${buttonAssets[location._id].hover}`
+                      ? `${baseBackendUrl}${buttonAssets[location._id].hover}`
                       : buttonAssets[location._id].normal
-                        ? `${API_BASE_URL}${buttonAssets[location._id].normal}`
-                        : `${API_BASE_URL}${buttonAssets[location._id].hover}`
+                        ? `${baseBackendUrl}${buttonAssets[location._id].normal}`
+                        : `${baseBackendUrl}${buttonAssets[location._id].hover}`
                   } 
                   alt={location.name} 
                   className="location-button-image" 

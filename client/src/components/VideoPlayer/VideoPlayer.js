@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import './VideoPlayer.css';
+import { cn } from '../../lib/utils';
 
 // Import baseBackendUrl for consistent URL handling
 import { baseBackendUrl } from '../../utils/api';
@@ -9,19 +9,78 @@ const VideoPlayer = ({
   currentVideo, 
   onVideoEnded,
   activeHotspot,
-  videoLoader 
+  videoLoader,
+  onVideoRef // New prop to expose the video reference
 }) => {
   const videoRef = useRef(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   // Add state to track if we're in a playlist sequence
   const [inPlaylistSequence, setInPlaylistSequence] = useState(false);
+  // Add state to explicitly track initial load vs transitions
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   // Add ref to track the current source to avoid unnecessary reloading
   const currentSourceRef = useRef(null);
   // Add ref to track preloaded videos in the current sequence
   const sequenceVideosRef = useRef({});
   // Add ref to track if the entire sequence is preloaded
   const sequencePreloadedRef = useRef(false);
+  // Add ref to track if we're transitioning between playlist videos
+  const isTransitioningRef = useRef(false);
+  // Add ref to track sequence mode without state timing issues
+  const inSequenceRef = useRef(false);
+  // Track which video we're currently playing
+  const currentVideoRef = useRef(currentVideo);
+
+  // Update currentVideoRef when currentVideo changes
+  useEffect(() => {
+    currentVideoRef.current = currentVideo;
+  }, [currentVideo]);
+
+  // Expose video reference to parent components
+  useEffect(() => {
+    if (videoRef.current) {
+      if (onVideoRef) {
+        // Create a reference to the current video element to avoid ESLint warning
+        const currentVideoEl = videoRef.current;
+        
+        // Ensure we pass the actual DOM element
+        onVideoRef(currentVideoEl);
+        
+        // Create named event handlers so they can be properly removed
+        const eventHandlers = {};
+        
+        // Update on every video state change
+        const videoEvents = [
+          'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough',
+          'playing', 'resize', 'durationchange'
+        ];
+        
+        videoEvents.forEach(event => {
+          // Store the handler function so we can remove it later
+          eventHandlers[event] = () => {
+            if (onVideoRef && videoRef.current) {
+              onVideoRef(videoRef.current);
+            }
+          };
+          
+          // Add the event listener
+          currentVideoEl.addEventListener(event, eventHandlers[event]);
+        });
+        
+        // Cleanup event listeners
+        return () => {
+          // Use the captured reference to the video element
+          videoEvents.forEach(event => {
+            if (eventHandlers[event]) {
+              // This fixes the ESLint warning by using a captured value
+              currentVideoEl.removeEventListener(event, eventHandlers[event]);
+            }
+          });
+        };
+      }
+    }
+  }, [onVideoRef, videoRef, currentVideo]);
 
   // Helper function to properly format video URLs
   const formatVideoUrl = useCallback((url) => {
@@ -43,25 +102,61 @@ const VideoPlayer = ({
       : `${baseBackendUrl}/api/${cleanUrl}`;
   }, []);
 
-  // Check if current video is part of a playlist sequence
+  // Helper function to check if a video is part of a sequence
+  const isSequenceVideo = useCallback((videoType) => {
+    return videoType === 'diveIn' || 
+           videoType === 'floorLevel' || 
+           videoType === 'zoomOut' ||
+           videoType?.startsWith('diveIn_') ||
+           videoType?.startsWith('floorLevel_') ||
+           videoType?.startsWith('zoomOut_');
+  }, []);
+
+  // Track when we enter a playlist sequence
   useEffect(() => {
-    // Video types that are part of a sequence
-    const sequenceTypes = ['diveIn', 'floorLevel', 'zoomOut'];
+    // Check if this is a playlist sequence video
+    const isCurrentVideoInSequence = isSequenceVideo(currentVideo);
     
-    // Check if current video is part of a sequence
-    const isSequenceVideo = currentVideo && 
-      (sequenceTypes.some(type => currentVideo.startsWith(type)) ||
-      sequenceTypes.includes(currentVideo));
-    
-    // Set the sequence state
-    setInPlaylistSequence(isSequenceVideo);
-    
-    // When we return to aerial, reset the sequence flag
-    if (currentVideo === 'aerial') {
+    if (isCurrentVideoInSequence && activeHotspot) {
+      // We're in a playlist sequence - set both state and ref
+      setInPlaylistSequence(true);
+      inSequenceRef.current = true;
+      
+      // Set transitioning flag at the start of video change
+      if (currentVideo === 'diveIn' || currentVideo?.startsWith('diveIn_')) {
+        // Only set transitioning when entering the sequence
+        isTransitioningRef.current = true;
+        setTimeout(() => {
+          isTransitioningRef.current = false;
+        }, 3000); // Extend to 3 seconds
+      } else if (currentVideo === 'floorLevel' || currentVideo?.startsWith('floorLevel_') ||
+                currentVideo === 'zoomOut' || currentVideo?.startsWith('zoomOut_')) {
+        // Set transitioning for subsequent videos in sequence
+        isTransitioningRef.current = true;
+        setTimeout(() => {
+          isTransitioningRef.current = false;
+        }, 3000); // Extend to 3 seconds
+      }
+      
+      // Always force isLoading to false for sequence videos
+      setIsLoading(false);
+    } else {
+      // Not in a playlist sequence
       setInPlaylistSequence(false);
-      sequencePreloadedRef.current = false;
+      
+      // If we're returning to aerial from a sequence, set transitioning
+      if (currentVideo === 'aerial' && (inPlaylistSequence || inSequenceRef.current)) {
+        isTransitioningRef.current = true;
+        
+        // Only reset the sequence ref when returning to aerial
+        inSequenceRef.current = false;
+        
+        setTimeout(() => {
+          isTransitioningRef.current = false;
+        }, 3000); // Extend to 3 seconds
+      }
     }
-  }, [currentVideo]);
+  }, [currentVideo, activeHotspot, inPlaylistSequence, isSequenceVideo]);
 
   // Preload all videos in a sequence when we detect an active hotspot
   useEffect(() => {
@@ -71,20 +166,16 @@ const VideoPlayer = ({
 
     const preloadSequence = async () => {
       try {
-        console.log('Preloading video sequence for hotspot:', activeHotspot._id);
-        
         // Get playlist info
         const hotspotId = activeHotspot._id;
         
         // Initialize loader if needed
         if (!videoLoader) {
-          console.warn('VideoLoader not available for preloading');
           return;
         }
         
         // Check if we have already preloaded the sequence for this hotspot
         if (sequencePreloadedRef.current && sequenceVideosRef.current[hotspotId]) {
-          console.log('Sequence already preloaded for hotspot:', hotspotId);
           return;
         }
         
@@ -93,8 +184,13 @@ const VideoPlayer = ({
         const floorLevelAsset = videoAssets.floorLevel?.find(v => v.hotspotId === hotspotId);
         const zoomOutAsset = videoAssets.zoomOut?.find(v => v.hotspotId === hotspotId);
         
-        if (!diveInAsset || !floorLevelAsset || !zoomOutAsset) {
-          console.warn('Missing one or more videos in sequence');
+        // Check if we have all required videos
+        const missingVideos = [];
+        if (!diveInAsset) missingVideos.push('Dive In');
+        if (!floorLevelAsset) missingVideos.push('Floor Level');
+        if (!zoomOutAsset) missingVideos.push('Zoom Out');
+        
+        if (missingVideos.length > 0) {
           return;
         }
         
@@ -117,7 +213,6 @@ const VideoPlayer = ({
         }
         
         // Start preloading in parallel
-        console.log('Preloading all videos in sequence');
         await videoLoader.preloadAll();
         
         // Store loaded videos in reference
@@ -129,7 +224,6 @@ const VideoPlayer = ({
         };
         
         sequencePreloadedRef.current = true;
-        console.log('All sequence videos preloaded for hotspot:', hotspotId);
       } catch (error) {
         console.error('Error preloading sequence videos:', error);
       }
@@ -141,28 +235,27 @@ const VideoPlayer = ({
   // Get the current video source with memoization
   const getCurrentVideoSource = useCallback(() => {
     if (!videoAssets || !currentVideo) {
-      console.log('No video assets or current video:', { videoAssets, currentVideo });
       return null;
     }
     
     let source = null;
     
     // Check if we're playing a sequence video and use the preloaded source if available
-    if (inPlaylistSequence && activeHotspot) {
+    if ((inPlaylistSequence || inSequenceRef.current) && activeHotspot) {
       const hotspotId = activeHotspot._id;
       const sequenceVideos = sequenceVideosRef.current[hotspotId];
       
       if (sequenceVideos?.loaded) {
+        // Mark that videos are preloaded so we don't show loading indicators
+        sequencePreloadedRef.current = true;
+        
         // Get preloaded URL from sequence cache
         if (currentVideo === 'diveIn' || currentVideo.startsWith('diveIn_')) {
           source = sequenceVideos.diveIn;
-          console.log('Using preloaded diveIn video');
         } else if (currentVideo === 'floorLevel' || currentVideo.startsWith('floorLevel_')) {
           source = sequenceVideos.floorLevel;
-          console.log('Using preloaded floorLevel video');
         } else if (currentVideo === 'zoomOut' || currentVideo.startsWith('zoomOut_')) {
           source = sequenceVideos.zoomOut;
-          console.log('Using preloaded zoomOut video');
         }
         
         if (source) {
@@ -171,26 +264,21 @@ const VideoPlayer = ({
       }
     }
     
+    // Handle non-sequence videos
     if (currentVideo === 'aerial' && videoAssets.aerial) {
-      console.log('Aerial video assets:', videoAssets.aerial);
-      
       if (!videoAssets.aerial.accessUrl) {
         console.error('Aerial video is missing accessUrl property:', videoAssets.aerial);
         return null;
       }
       
       source = videoAssets.aerial.accessUrl;
-      console.log('Using aerial video source:', source);
     } else if (currentVideo === 'transition' && videoAssets.transition) {
-      console.log('Transition video assets:', videoAssets.transition);
-      
       if (!videoAssets.transition.accessUrl) {
         console.error('Transition video is missing accessUrl property:', videoAssets.transition);
         return null;
       }
       
       source = videoAssets.transition.accessUrl;
-      console.log('Using transition video source:', source);
     } else if (activeHotspot) {
       // Handle playlist videos
       const [type, hotspotId] = currentVideo.split('_');
@@ -201,7 +289,6 @@ const VideoPlayer = ({
       }
       
       const video = videoAssets[type]?.find(v => v.hotspotId === hotspotId);
-      console.log(`Playlist video (${type}_${hotspotId}):`, video);
       
       if (video) {
         if (!video.accessUrl) {
@@ -210,7 +297,6 @@ const VideoPlayer = ({
         }
         
         source = video.accessUrl;
-        console.log('Using playlist video source:', source);
       } else {
         console.error(`Playlist video (${type}_${hotspotId}) not found in assets:`, videoAssets[type]);
       }
@@ -218,11 +304,9 @@ const VideoPlayer = ({
     
     if (source) {
       return formatVideoUrl(source);
-    } else {
-      console.warn('No source found for video type:', currentVideo);
     }
     return source;
-  }, [videoAssets, currentVideo, activeHotspot, inPlaylistSequence, formatVideoUrl]);
+  }, [videoAssets, currentVideo, activeHotspot, inPlaylistSequence, formatVideoUrl, inSequenceRef]);
 
   // Define handleVideoError with useCallback to avoid recreation on every render
   const handleVideoError = useCallback((e) => {
@@ -240,6 +324,18 @@ const VideoPlayer = ({
       currentVideo === 'transition' ? videoAssets?.transition : 
       'playlist video');
       
+    // Don't show errors for sequence videos - just continue to the next video
+    if (isSequenceVideo(currentVideo)) {
+      console.warn(`Error loading sequence video ${currentVideo}, continuing to next video`);
+      setIsLoading(false);
+      
+      // Go to the next video in sequence
+      if (onVideoEnded) {
+        onVideoEnded(currentVideo);
+      }
+      return;
+    }
+    
     setError('Failed to load video. Please try refreshing the page.');
     setIsLoading(false);
     
@@ -248,107 +344,129 @@ const VideoPlayer = ({
       console.warn('Aerial video failed, handling as if video ended');
       onVideoEnded('aerial');
     }
-  }, [currentVideo, videoAssets, onVideoEnded]);
+  }, [currentVideo, videoAssets, onVideoEnded, isSequenceVideo]);
 
   // Reset states when video changes
   useEffect(() => {
     if (videoRef.current) {
       const source = getCurrentVideoSource();
       
+      // Add a timestamp to prevent browser caching when switching between locations
+      const sourceWithTimestamp = source ? `${source}${source.includes('?') ? '&' : '?'}t=${Date.now()}` : null;
+      
       // Skip reloading if source is the same as current
       if (source && source === currentSourceRef.current && !error) {
-        console.log('Video source unchanged, skipping reload:', source);
-        return;
+        // Even if source is the same, we should reload if we're changing video type
+        // This ensures proper reload when returning to a previously viewed location
+        const currentType = currentVideo?.split('_')[0]; // Extract base type (aerial, transition, etc)
+        const prevType = currentVideoRef.current?.split('_')[0];
+        
+        // If we're just changing between the same type, we can skip reloading
+        if (currentType === prevType) {
+          return;
+        }
+        // Otherwise we'll continue and force a reload of the video
       }
       
-      // Skip loading indicator if we're transitioning between playlist videos
-      // and the videos are already preloaded
-      const isPreloadedSequence = inPlaylistSequence && 
-                                sequencePreloadedRef.current && 
+      // Check if videos in the sequence are preloaded
+      const isPreloadedSequence = (inPlaylistSequence || inSequenceRef.current) && 
                                 activeHotspot && 
                                 sequenceVideosRef.current[activeHotspot._id]?.loaded;
+      
+      // Always consider sequence as preloaded if we have the videos in our ref
+      if (isPreloadedSequence) {
+        sequencePreloadedRef.current = true;
+      }
                                 
-      // Save new source to ref
+      // Save new source to ref - use the source without timestamp for comparison later
       currentSourceRef.current = source;
       
-      // Only reset error state, keep isLoading as is during playlist sequence
+      // Only reset error state
       setError(null);
       
-      // Only set loading to true if not in a playlist sequence or not preloaded
-      if (!inPlaylistSequence && !isPreloadedSequence) {
-        console.log('Setting isLoading to true for non-sequence or non-preloaded video');
+      // IMMEDIATELY set isLoading to false for ANY sequence video or transition
+      if (isSequenceVideo(currentVideo) || isTransitioningRef.current) {
+        setIsLoading(false);
+      } else if (!initialLoadComplete) {
+        // For initial videos (aerial, transition), show loading only for the first load
         setIsLoading(true);
-      } else if (inPlaylistSequence && !isPreloadedSequence) {
-        // For sequence videos that aren't yet preloaded, show minimal loading indicator
-        console.log('Setting isLoading to true for sequence video not yet preloaded');
-        setIsLoading(true);
-      } else {
-        console.log('Keeping loading state for preloaded sequence video');
       }
       
-      if (source) {
-        console.log('Setting video source:', source);
+      if (sourceWithTimestamp) {
+        // Set source and load immediately for all videos
+        videoRef.current.src = sourceWithTimestamp;
+        videoRef.current.load();
         
-        if (isPreloadedSequence) {
-          // For preloaded sequence videos, we want immediate playback
-          console.log('Using preloaded video for smooth transition');
+        // Auto-play immediately for smooth transitions
+        videoRef.current.play().catch(err => {
+          console.error('Error playing video:', err);
           
-          // Set source and load immediately
-          videoRef.current.src = source;
-          videoRef.current.load();
-          
-          // Auto-play after a very short delay to ensure smooth transition
-          setTimeout(() => {
-            if (videoRef.current) {
-              videoRef.current.play().catch(err => {
-                console.error('Error playing preloaded video:', err);
-              });
+          // If we can't play, don't show loader - just try to recover
+          if (isSequenceVideo(currentVideo)) {
+            console.warn(`Could not play ${currentVideo}, attempting to continue sequence`);
+            if (onVideoEnded) {
+              // Try to move to next video
+              onVideoEnded(currentVideo);
             }
-          }, 50);
-        } else {
-          // Normal loading process for non-sequence videos
-          videoRef.current.src = source;
-          videoRef.current.load();
+          }
+        });
+        
+        // For preloaded sequences or transitions, never show loading indicators
+        if (isPreloadedSequence || isTransitioningRef.current || inSequenceRef.current || 
+            isSequenceVideo(currentVideo)) {
+          setIsLoading(false);
         }
         
         // Add timeout to handle videos that might fail to load silently
         const loadTimeout = setTimeout(() => {
           if (isLoading) {
-            console.warn('Video load timeout reached, handling as error');
-            handleVideoError(new Error('Video load timeout'));
+            // Don't trigger error for sequence videos - just continue
+            if (isSequenceVideo(currentVideoRef.current)) {
+              console.warn(`Loading timeout for sequence video ${currentVideoRef.current}, continuing`);
+              if (onVideoEnded) {
+                onVideoEnded(currentVideoRef.current);
+              }
+            } else {
+              handleVideoError(new Error('Video load timeout'));
+            }
           }
         }, 10000); // 10 second timeout
         
         return () => clearTimeout(loadTimeout);
       } else {
-        console.warn('No video source available for:', currentVideo);
         setIsLoading(false);
         setError('No video source available');
       }
     }
-  }, [currentVideo, videoAssets, activeHotspot, getCurrentVideoSource, isLoading, handleVideoError, error, inPlaylistSequence]);
+  }, [currentVideo, videoAssets, activeHotspot, getCurrentVideoSource, isLoading, handleVideoError, error, inPlaylistSequence, initialLoadComplete, isSequenceVideo, onVideoEnded, inSequenceRef]);
 
   const handleVideoLoaded = () => {
-    console.log('Video loaded successfully:', currentVideo);
     setIsLoading(false);
     setError(null);
     
-    // Start playback immediately for sequence videos
-    if (inPlaylistSequence) {
-      if (videoRef.current) {
-        videoRef.current.play().catch(err => {
-          console.error('Error playing video:', err);
-        });
-      }
-    } else {
-      // Start playback after a short delay for non-sequence videos
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.play().catch(err => {
-            console.error('Error playing video:', err);
-          });
+    // Mark initial load as complete after first video loads
+    if (!initialLoadComplete) {
+      setInitialLoadComplete(true);
+    }
+    
+    // Expose the video ref again after loading is complete
+    if (onVideoRef && videoRef.current) {
+      onVideoRef(videoRef.current);
+    }
+    
+    // Start playback immediately for all videos
+    if (videoRef.current) {
+      videoRef.current.play().catch(err => {
+        console.error('Error playing video:', err);
+        
+        // If we can't play a sequence video, try to move to next one
+        if (isSequenceVideo(currentVideoRef.current)) {
+          console.warn(`Could not play ${currentVideoRef.current}, attempting to continue sequence`);
+          if (onVideoEnded) {
+            onVideoEnded(currentVideoRef.current);
+          }
         }
-      }, 100);
+      });
     }
   };
 
@@ -357,28 +475,71 @@ const VideoPlayer = ({
     // Only trigger onVideoEnded for non-aerial videos
     // Aerial videos will loop automatically due to the loop attribute
     if (currentVideo !== 'aerial' && onVideoEnded) {
+      // Set transitioning flag before video changes - for ALL sequence videos
+      if (isSequenceVideo(currentVideo)) {
+        isTransitioningRef.current = true;
+        // Reset after a longer delay - 3 seconds should cover loading time
+        setTimeout(() => {
+          if (currentVideoRef.current !== currentVideo) { // Only reset if we've moved to a new video
+            isTransitioningRef.current = false;
+          }
+        }, 3000);
+      }
+      
+      // Force isLoading to false for ALL sequence transitions
+      setIsLoading(false);
+      
       onVideoEnded(currentVideo);
     }
   };
 
   return (
-    <div className="video-player-container">
-      {error && (
-        <div className="video-error">
-          <p>{error}</p>
-          <button onClick={() => window.location.reload()}>Retry</button>
+    <div 
+      className={cn(
+        "relative w-full h-full overflow-hidden",
+        currentVideo === 'aerial' ? "bg-[#def2f4]" : "bg-black"
+      )} 
+      data-video-type={currentVideo}
+    >
+      {error && !isSequenceVideo(currentVideo) && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                      bg-black/70 p-5 rounded-lg text-white text-center max-w-[80%] z-20">
+          <p className="m-0 mb-4 text-base">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 py-2 px-4 bg-netflix-red text-white border-none rounded cursor-pointer
+                     hover:bg-netflix-red/90"
+          >
+            Retry
+          </button>
         </div>
       )}
-      {/* Only show loading spinner for initial loads, not during playlist transitions */}
-      {isLoading && !error && !inPlaylistSequence && (
-        <div className="video-loading">
-          <div className="loading-spinner"></div>
-          <p>Loading video...</p>
-        </div>
+      {/* Only show loading spinner when:
+          1. isLoading is true
+          2. There's no error
+          3. We're not in a playlist sequence
+          4. We're not in a sequence (via ref)
+          5. We're not transitioning between videos
+          6. Current video is not a sequence video
+      */}
+      {isLoading && !error && 
+        !inPlaylistSequence && 
+        !inSequenceRef.current && 
+        !isTransitioningRef.current && 
+        !isSequenceVideo(currentVideo) && (
+          <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/60 text-white z-15">
+            <div className="w-[50px] h-[50px] border-3 border-white/30 rounded-full border-t-netflix-red
+                          animate-spin mb-4"></div>
+            <p className="m-0 text-base">Loading video...</p>
+          </div>
       )}
       <video
         ref={videoRef}
-        className="video-player"
+        className={cn(
+          "w-full h-full absolute top-0 left-0 object-contain",
+          currentVideo === 'aerial' ? "bg-[#def2f4]" : "bg-black",
+          "hover:cursor-default"
+        )}
         onEnded={handleVideoEnded}
         onError={handleVideoError}
         onLoadedData={handleVideoLoaded}
@@ -389,6 +550,7 @@ const VideoPlayer = ({
         loop={currentVideo === 'aerial'}
         // Preload videos for better performance
         preload="auto"
+        data-video-id={`video-${currentVideo}`}
       />
     </div>
   );

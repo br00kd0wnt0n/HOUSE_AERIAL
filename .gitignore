@@ -11,6 +11,7 @@ yarn.lock
 /dist
 /.next
 /out
+/client/build/
 
 # Environment variables
 .env

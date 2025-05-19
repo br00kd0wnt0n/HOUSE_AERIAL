@@ -12,7 +12,10 @@ exports.getHotspots = async (req, res) => {
     if (location) query.location = location;
     if (type) query.type = type;
     
-    const hotspots = await Hotspot.find(query).populate('location');
+    const hotspots = await Hotspot.find(query)
+      .populate('location')
+      .populate('mapPin')
+      .populate('uiElement');
     res.json(hotspots);
   } catch (error) {
     console.error('Error getting hotspots:', error);
@@ -23,7 +26,9 @@ exports.getHotspots = async (req, res) => {
 // Create a new hotspot
 exports.createHotspot = async (req, res) => {
   try {
-    const { name, location, type, coordinates, infoPanel } = req.body;
+    const { name, location, type, coordinates, infoPanel, mapPin, uiElement } = req.body;
+    
+    console.log("Creating hotspot with data:", req.body);
     
     // Validate required inputs
     if (!name || !location || !type || !coordinates || coordinates.length < 3) {
@@ -38,7 +43,9 @@ exports.createHotspot = async (req, res) => {
       location,
       type,
       coordinates,
-      infoPanel: infoPanel || {}
+      mapPin: mapPin || null,
+      infoPanel: infoPanel || {},
+      uiElement: uiElement || null
     });
     
     await hotspot.save();
@@ -51,7 +58,12 @@ exports.createHotspot = async (req, res) => {
     
     await playlist.save();
     
-    res.status(201).json(hotspot);
+    // Return the populated hotspot with map pin data to avoid rendering issues
+    const populatedHotspot = await Hotspot.findById(hotspot._id)
+      .populate('location')
+      .populate('mapPin')
+      .populate('uiElement');
+    res.status(201).json(populatedHotspot);
   } catch (error) {
     console.error('Error creating hotspot:', error);
     res.status(500).json({ error: 'Failed to create hotspot' });
@@ -61,7 +73,10 @@ exports.createHotspot = async (req, res) => {
 // Get a single hotspot by ID
 exports.getHotspot = async (req, res) => {
   try {
-    const hotspot = await Hotspot.findById(req.params.id).populate('location');
+    const hotspot = await Hotspot.findById(req.params.id)
+      .populate('location')
+      .populate('mapPin')
+      .populate('uiElement');
     if (!hotspot) {
       return res.status(404).json({ error: 'Hotspot not found' });
     }
@@ -75,7 +90,9 @@ exports.getHotspot = async (req, res) => {
 // Update a hotspot
 exports.updateHotspot = async (req, res) => {
   try {
-    const { name, type, coordinates, infoPanel, isActive } = req.body;
+    const { name, type, coordinates, infoPanel, mapPin, uiElement, isActive } = req.body;
+    
+    console.log("Updating hotspot with data:", req.body);
     
     // Find the hotspot to update
     const hotspot = await Hotspot.findById(req.params.id);
@@ -89,6 +106,18 @@ exports.updateHotspot = async (req, res) => {
     if (coordinates && coordinates.length >= 3) hotspot.coordinates = coordinates;
     if (infoPanel) hotspot.infoPanel = infoPanel;
     if (isActive !== undefined) hotspot.isActive = isActive;
+    
+    // Handle map pin update
+    if (mapPin !== undefined) { // Check if mapPin field was included (even if null)
+      console.log(`Updating hotspot map pin from ${hotspot.mapPin} to ${mapPin}`);
+      hotspot.mapPin = mapPin;
+    }
+    
+    // Handle UI element update
+    if (uiElement !== undefined) { // Check if uiElement field was included (even if null)
+      console.log(`Updating hotspot UI element from ${hotspot.uiElement} to ${uiElement}`);
+      hotspot.uiElement = uiElement;
+    }
     
     await hotspot.save();
     
@@ -104,7 +133,12 @@ exports.updateHotspot = async (req, res) => {
       }
     }
     
-    res.json(hotspot);
+    // Return the populated hotspot with map pin data
+    const populatedHotspot = await Hotspot.findById(hotspot._id)
+      .populate('location')
+      .populate('mapPin')
+      .populate('uiElement');
+    res.json(populatedHotspot);
   } catch (error) {
     console.error('Error updating hotspot:', error);
     res.status(500).json({ error: 'Failed to update hotspot' });
@@ -136,7 +170,10 @@ exports.deleteHotspot = async (req, res) => {
 exports.getHotspotsByLocation = async (req, res) => {
   try {
     const locationId = req.params.locationId;
-    const hotspots = await Hotspot.find({ location: locationId }).populate('location');
+    const hotspots = await Hotspot.find({ location: locationId })
+      .populate('location')
+      .populate('mapPin')
+      .populate('uiElement');
     res.json(hotspots);
   } catch (error) {
     console.error('Error getting hotspots by location:', error);

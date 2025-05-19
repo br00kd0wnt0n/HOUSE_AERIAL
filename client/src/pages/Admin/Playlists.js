@@ -21,6 +21,9 @@ import {
 import { useToast } from '../../components/ui/use-toast';
 import { Badge } from '../../components/ui/badge';
 
+// Import baseBackendUrl from api.js
+import { baseBackendUrl } from '../../utils/api';
+
 const Playlists = () => {
   const { 
     locations,
@@ -32,7 +35,8 @@ const Playlists = () => {
     isLoading,
     isSaving,
     updatePlaylist,
-    fetchPlaylists
+    fetchPlaylists,
+    fetchHotspots
   } = useAdmin();
   
   const { toast } = useToast();
@@ -65,8 +69,11 @@ const Playlists = () => {
       setSelectedHotspot(null);
       setSelectedPlaylist(null);
       resetVideoSelections();
+      // Explicitly fetch hotspots and playlists for the new location
+      fetchHotspots(location._id);
+      fetchPlaylists(location._id);
     }
-  }, [locations, setSelectedLocation, resetVideoSelections]);
+  }, [locations, setSelectedLocation, resetVideoSelections, fetchHotspots, fetchPlaylists]);
   
   // Load playlist when hotspot changes
   useEffect(() => {
@@ -158,10 +165,10 @@ const Playlists = () => {
     }
   }, []);
   
-  // Loading state
+  // Show loading state
   if (isLoading) {
     return (
-      <div className="p-6 w-full min-w-[1000px] h-screen overflow-y-auto bg-netflix-black text-white flex flex-col items-center justify-center">
+      <div className="p-6 flex flex-col items-center justify-center h-full bg-netflix-black text-white">
         <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
         <p className="mt-4 text-lg">Loading playlists...</p>
       </div>
@@ -169,12 +176,10 @@ const Playlists = () => {
   }
   
   return (
-    <div className="p-6 w-full min-w-[1000px] h-screen overflow-y-auto bg-netflix-black text-white">
-      <h1 className="text-2xl font-bold text-netflix-red border-b border-netflix-gray pb-3 mb-6">Playlist Management</h1>
-      
+    <div className="p-6 bg-netflix-black text-white">
       {/* Location selector */}
-      <div className="mb-6 flex items-center">
-        <label htmlFor="location" className="mr-3 font-bold text-white">
+      <div className="mb-6 flex flex-wrap items-center">
+        <label htmlFor="location" className="mr-3 font-bold text-white mb-2 md:mb-0">
           Location:
         </label>
         <Select 
@@ -182,7 +187,7 @@ const Playlists = () => {
           onValueChange={handleLocationChange}
           disabled={isLoading}
         >
-          <SelectTrigger className="w-[250px]">
+          <SelectTrigger className="w-full md:w-[250px]">
             <SelectValue placeholder="Select a location" />
           </SelectTrigger>
           <SelectContent>
@@ -196,7 +201,7 @@ const Playlists = () => {
       </div>
       
       {selectedLocation ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Hotspot selection */}
           <div className="lg:col-span-1">
             <Card className="bg-netflix-dark border-netflix-gray">
@@ -226,7 +231,7 @@ const Playlists = () => {
                           }`}
                           onClick={() => setSelectedHotspot(hotspot)}
                         >
-                          <div className="font-medium">{hotspot.name}</div>
+                          <div className="font-medium truncate mr-2">{hotspot.name}</div>
                           <Badge variant={
                             status === 'complete' ? 'success' : 
                             status === 'partial' ? 'warning' : 
@@ -246,11 +251,11 @@ const Playlists = () => {
           </div>
           
           {/* Playlist editor */}
-          <div className="lg:col-span-2 flex items-center justify-center">
+          <div className="lg:col-span-2">
             {selectedHotspot ? (
               <Card className="bg-netflix-dark border-netflix-gray w-full">
                 <CardHeader>
-                  <h2 className="text-xl font-bold text-white">Configure Playlist for "{selectedHotspot.name}"</h2>
+                  <h2 className="text-xl font-bold text-white break-words">Configure Playlist for "{selectedHotspot.name}"</h2>
                 </CardHeader>
                 <CardContent>
                   <form className="space-y-6" onSubmit={handleUpdatePlaylist}>
@@ -278,7 +283,7 @@ const Playlists = () => {
                       </Select>
                       
                       {videoSelections.diveInVideo && videoSelections.diveInVideo !== 'none' && (
-                        <div className="mt-4 p-4 bg-netflix-black rounded-md">
+                        <div className="mt-4 p-2 sm:p-4 bg-netflix-black rounded-md">
                           <h4 className="font-medium text-netflix-red mb-2">Preview:</h4>
                           <video 
                             className="w-full max-h-[180px] object-contain rounded-md" 
@@ -291,7 +296,6 @@ const Playlists = () => {
                                 if (!video) return '';
                                 
                                 // Use direct backend URL
-                                const baseBackendUrl = 'http://localhost:3001';
                                 if (video.accessUrl) {
                                   return video.accessUrl.startsWith('/api/') ? 
                                     `${baseBackendUrl}${video.accessUrl}` : 
@@ -332,7 +336,7 @@ const Playlists = () => {
                       </Select>
                       
                       {videoSelections.floorLevelVideo && videoSelections.floorLevelVideo !== 'none' && (
-                        <div className="mt-4 p-4 bg-netflix-black rounded-md">
+                        <div className="mt-4 p-2 sm:p-4 bg-netflix-black rounded-md">
                           <h4 className="font-medium text-netflix-red mb-2">Preview:</h4>
                           <video 
                             className="w-full max-h-[180px] object-contain rounded-md" 
@@ -345,7 +349,6 @@ const Playlists = () => {
                                 if (!video) return '';
                                 
                                 // Use direct backend URL
-                                const baseBackendUrl = 'http://localhost:3001';
                                 if (video.accessUrl) {
                                   return video.accessUrl.startsWith('/api/') ? 
                                     `${baseBackendUrl}${video.accessUrl}` : 
@@ -386,7 +389,7 @@ const Playlists = () => {
                       </Select>
                       
                       {videoSelections.zoomOutVideo && videoSelections.zoomOutVideo !== 'none' && (
-                        <div className="mt-4 p-4 bg-netflix-black rounded-md">
+                        <div className="mt-4 p-2 sm:p-4 bg-netflix-black rounded-md">
                           <h4 className="font-medium text-netflix-red mb-2">Preview:</h4>
                           <video 
                             className="w-full max-h-[180px] object-contain rounded-md" 
@@ -399,7 +402,6 @@ const Playlists = () => {
                                 if (!video) return '';
                                 
                                 // Use direct backend URL
-                                const baseBackendUrl = 'http://localhost:3001';
                                 if (video.accessUrl) {
                                   return video.accessUrl.startsWith('/api/') ? 
                                     `${baseBackendUrl}${video.accessUrl}` : 
@@ -417,7 +419,7 @@ const Playlists = () => {
                     </div>
                     
                     {/* Playlist status */}
-                    <div className="p-4 bg-netflix-black rounded-md">
+                    <div className="p-2 sm:p-4 bg-netflix-black rounded-md">
                       <h4 className="font-medium text-white mb-2">Playlist Status:</h4>
                       <div className={`flex items-center ${
                         getPlaylistStatus(selectedPlaylist) === 'complete' 
@@ -426,11 +428,11 @@ const Playlists = () => {
                             ? 'text-amber-500'
                             : 'text-red-500'
                       }`}>
-                        <span className="text-2xl mr-2">
+                        <span className="text-xl sm:text-2xl mr-2">
                           {getPlaylistStatus(selectedPlaylist) === 'complete' ? '✓' : 
                            getPlaylistStatus(selectedPlaylist) === 'partial' ? '⚠' : '✕'}
                         </span>
-                        <span>
+                        <span className="text-sm sm:text-base">
                           {getPlaylistStatus(selectedPlaylist) === 'complete' 
                             ? 'Complete - Ready for playback' 
                             : getPlaylistStatus(selectedPlaylist) === 'partial'
@@ -452,8 +454,8 @@ const Playlists = () => {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="bg-netflix-dark border-netflix-gray w-full h-full flex flex-col justify-center">
-                <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+              <Card className="bg-netflix-dark border-netflix-gray w-full">
+                <CardContent className="p-4 sm:p-8 flex flex-col items-center justify-center text-center">
                   <p className="text-netflix-lightgray mb-4 mx-auto">Select a hotspot from the list to configure its playlist.</p>
                   {primaryHotspots.length === 0 && (
                     <Button 
@@ -469,7 +471,7 @@ const Playlists = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-netflix-dark p-8 rounded-md text-center">
+        <div className="bg-netflix-dark p-4 sm:p-8 rounded-md text-center">
           <p className="text-netflix-lightgray mb-6">Please select a location to manage playlists.</p>
           {locations.length === 0 && (
             <Button 

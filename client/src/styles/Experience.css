@@ -17,12 +17,15 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .video-player {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain; /* Ensure consistent display with admin panel */
   background-color: #000;
 }
 
@@ -67,6 +70,9 @@
   height: 100%;
   z-index: 10;
   pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .hotspot {
@@ -128,155 +134,6 @@
   opacity: 1;
 }
 
-/* Location navigation buttons */
-.location-nav-buttons {
-  position: absolute;
-  bottom: 40px;
-  left: 0;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  z-index: 15;
-  gap: 20px;
-}
-
-.location-nav-button {
-  background: rgba(0, 0, 0, 0.8);
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  color: #fff;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 150px;
-  min-height: 60px;
-  overflow: visible;
-}
-
-/* Special class for buttons with images - removes background and border */
-.location-nav-button.has-image {
-  background: transparent;
-  border: none;
-  padding: 0;
-  min-width: 200px;
-  min-height: 100%;
-  overflow: visible;
-  color: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  margin: 0;
-}
-
-.location-nav-button:hover {
-  background: rgba(0, 0, 0, 0.9);
-  border-color: #e50914;
-  transform: translateY(-5px);
-}
-
-/* No background color change on hover for image buttons */
-.location-nav-button.has-image:hover {
-  background: transparent;
-  border: none;
-  transform: none;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-.location-nav-button.left {
-  margin-right: 20px;
-}
-
-.location-nav-button.right {
-  margin-left: 20px;
-}
-
-.nav-button-text-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.nav-button-text {
-  font-weight: bold;
-}
-
-.nav-button-arrow {
-  font-size: 20px;
-}
-
-.nav-button-image {
-  max-height: none;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  max-width: none;
-}
-
-/* Back to menu button */
-.menu-button {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  z-index: 20;
-  transition: all 0.3s ease;
-  font-size: 14px;
-}
-
-.menu-button:hover {
-  background: rgba(0, 0, 0, 0.9);
-  border-color: #e50914;
-}
-
-/* Info panel for secondary hotspots */
-.info-panel {
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  padding: 20px;
-  border-radius: 8px;
-  max-width: 400px;
-  z-index: 15;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.info-panel h3 {
-  margin-top: 0;
-  color: #e50914;
-}
-
-.info-panel p {
-  margin-bottom: 0;
-}
-
-/* Debug info panel */
-.debug-info {
-  position: absolute;
-  top: 0;
-  left: 0;
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  padding: 10px;
-  font-size: 12px;
-  z-index: 100;
-  font-family: monospace;
-  max-width: 50%;
-  overflow: auto;
-  max-height: 50%;
-}
-
 /* Loading progress bar */
 .loading-progress {
   margin-top: 20px;
@@ -324,21 +181,5 @@
   .hotspot-indicator {
     width: 16px;
     height: 16px;
-  }
-
-  .location-nav-buttons {
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    bottom: 20px;
-  }
-
-  .location-nav-button.left,
-  .location-nav-button.right {
-    margin: 0;
-  }
-
-  .info-panel {
-    max-width: 80%;
   }
 }

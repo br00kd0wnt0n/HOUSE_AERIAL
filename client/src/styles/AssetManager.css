@@ -149,7 +149,28 @@
   font-size: 1.3rem;
 }
 
-/* Responsive adjustments */
+/* Responsive adjustments for all iPad models */
+@media (max-width: 1366px) {
+  .asset-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .asset-manager {
+    padding: 1.5rem;
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+
+  .action-buttons {
+    flex-wrap: wrap;
+  }
+}
+
+/* Existing responsive adjustments */
 @media (max-width: 768px) {
   .asset-manager {
     padding: 1rem;
@@ -171,4 +192,4 @@
   .upload-button {
     width: 100%;
   }
-} 
+}

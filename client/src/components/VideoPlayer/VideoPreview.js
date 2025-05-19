@@ -5,23 +5,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { baseBackendUrl } from '../../utils/api';
 
-const VideoPreview = ({ src, title, width = 120, height = 80 }) => {
+const VideoPreview = ({ video, className = '' }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Ensure URL is properly formatted
+  // Handle missing video prop gracefully
+  if (!video) {
+    return (
+      <div className={`video-preview ${className}`}>
+        <div className="flex items-center justify-center w-full h-full bg-gray-100 text-gray-500">
+          No video selected
+        </div>
+      </div>
+    );
+  }
+
+  // Format video URL
   const getVideoUrl = () => {
-    // If URL is already fully qualified, use it
-    if (src.startsWith('http')) {
-      return src;
+    if (!video) return '';
+    
+    if (!video.accessUrl) {
+      return '';
     }
     
-    // Ensure API URLs have proper backend URL
-    const baseBackendUrl = 'http://localhost:3001';
-    if (src.startsWith('/api/')) {
-      return `${baseBackendUrl}${src}`;
+    if (video.accessUrl.startsWith('http')) {
+      return video.accessUrl;
+    }
+    
+    if (video.accessUrl.startsWith('/api/')) {
+      return `${baseBackendUrl}${video.accessUrl}`;
     } else {
-      return `${baseBackendUrl}/api${src}`;
+      return `${baseBackendUrl}/api${video.accessUrl}`;
     }
   };
 
@@ -33,11 +48,11 @@ const VideoPreview = ({ src, title, width = 120, height = 80 }) => {
       <div
         className="cursor-pointer relative rounded-md overflow-hidden group"
         onClick={() => setIsOpen(true)}
-        style={{ width, height }}
+        style={{ width: video.width, height: video.height }}
       >
         <video 
-          width={width} 
-          height={height} 
+          width={video.width} 
+          height={video.height} 
           preload="metadata" 
           className="rounded-md object-cover"
         >
@@ -67,7 +82,7 @@ const VideoPreview = ({ src, title, width = 120, height = 80 }) => {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-3xl p-1 overflow-hidden bg-netflix-dark">
           <DialogHeader className="px-4 pt-4">
-            <DialogTitle>{title}</DialogTitle>
+            <DialogTitle>{video.title}</DialogTitle>
           </DialogHeader>
           <div className="p-4 flex items-center justify-center">
             <video 

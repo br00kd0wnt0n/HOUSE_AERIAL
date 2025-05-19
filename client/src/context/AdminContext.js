@@ -11,6 +11,10 @@ export function useAdmin() {
 
 export function AdminProvider({ children }) {
   console.log('[AdminProvider] Initializing / Re-rendering');
+  
+  // Admin mode state
+  const [isAdminMode, setIsAdminMode] = useState(false); // Default to false when in AdminProvider
+
   // Locations state
   const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -129,10 +133,22 @@ export function AdminProvider({ children }) {
     if (!locationId) return;
     console.log(`[AdminProvider] fetchPlaylistsForLocation called for ${locationId}.`);
     try {
-      const response = await retryWithBackoff(() => api.getPlaylistsByLocation(locationId));
-      console.log(`[AdminProvider] Playlists API response for ${locationId}:`, response.data.length);
+      // Use getPlaylists() instead of the non-existent getPlaylistsByLocation
+      const response = await retryWithBackoff(() => api.getPlaylists());
+      console.log(`[AdminProvider] All playlists API response:`, response.data.length);
+      
+      // Filter playlists for this location based on hotspot's location
+      const filteredPlaylists = response.data.filter(playlist => {
+        // Check if the playlist has a hotspot and that hotspot has a location matching our locationId
+        return playlist.hotspot && 
+               ((typeof playlist.hotspot.location === 'string' && playlist.hotspot.location === locationId) ||
+                (playlist.hotspot.location && playlist.hotspot.location._id === locationId));
+      });
+      
+      console.log(`[AdminProvider] Filtered playlists for ${locationId}:`, filteredPlaylists.length);
+      
       setPlaylists(prevPlaylists => {
-        const newPlaylists = response.data;
+        const newPlaylists = filteredPlaylists;
         const updatedPlaylists = [...prevPlaylists];
         newPlaylists.forEach(newPlaylist => {
           const index = updatedPlaylists.findIndex(p => p._id === newPlaylist._id);
@@ -228,12 +244,35 @@ export function AdminProvider({ children }) {
     setIsSaving(true);
     setSaveStatus({ success: false, message: 'Uploading asset...' });
     try {
+      console.log(`[AdminContext] Uploading asset: ${name}, type: ${type}, locationId: ${locationId || 'none'}`);
+      
       const formData = new FormData();
       formData.append('file', file);
       formData.append('name', name);
       formData.append('type', type);
-      if (locationId) formData.append('location', locationId);
+      
+      // Ensure locationId is properly handled
+      if (locationId && locationId !== 'null' && locationId !== 'undefined') {
+        console.log(`[AdminContext] Adding location ID to form data: ${locationId}`);
+        formData.append('location', locationId);
+      } else {
+        console.log(`[AdminContext] No valid location ID to add to form data`);
+      }
+      
+      // Log formData entries for debugging
+      console.log('[AdminContext] FormData contents:');
+      for (let pair of formData.entries()) {
+        console.log(`[AdminContext] ${pair[0]}: ${pair[1]}`);
+      }
+      
       const response = await api.createAsset(formData);
+      console.log(`[AdminContext] Upload response:`, response.data);
+      
+      // Check if the location was properly saved
+      if (locationId && (!response.data.location || response.data.location === null)) {
+        console.warn(`[AdminContext] Warning: Location was not saved in the response data despite being provided.`);
+      }
+      
       // Manually add to the cumulative assets state after successful upload
       setAssets(prevAssets => [...prevAssets, { ...response.data, location: response.data.location || { _id: locationId } }]);
       setSaveStatus({ success: true, message: `Asset "${name}" uploaded successfully.` });
@@ -528,6 +567,8 @@ export function AdminProvider({ children }) {
   
   // Provide the context value
   const value = {
+    isAdminMode,
+    setIsAdminMode,
     locations,
     selectedLocation,
     setSelectedLocation, // Make sure this is used carefully to avoid loops
@@ -542,6 +583,7 @@ export function AdminProvider({ children }) {
     isLoading: isLoadingLocations || isFetchingLocationData, // Combined loading state for UI
     fetchInProgress: isFetchingLocationData, // More specific for asset/hotspot/playlist fetches per location
     isSaving,
+    setSaving: setIsSaving,
     saveStatus,
     setSaveStatus,
     fetchLocations,

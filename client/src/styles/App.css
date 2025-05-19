@@ -1,4 +1,4 @@
-/* Placeholder App.css */ 
+/* Placeholder App.css */
 
 /* App styles */
 .app {
@@ -23,6 +23,26 @@
   overflow-y: auto;
   position: relative;
   width: calc(100% - 250px); /* Subtract nav width from total width */
+}
+
+/* iPad Pro, iPad Air, iPad Mini responsive adjustments */
+@media (max-width: 1366px) {
+  .admin-content {
+    width: calc(100% - 250px);
+    min-width: auto; /* Remove any fixed min-width */
+    overflow-x: auto; /* Allow horizontal scrolling if needed */
+  }
+}
+
+@media (max-width: 1024px) {
+  .admin-nav {
+    width: 200px;
+  }
+
+  .admin-content {
+    margin-left: 200px;
+    width: calc(100% - 200px);
+  }
 }
 
 /* Loading screen */
@@ -184,4 +204,4 @@
   color: #fff;
   background-color: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
-} 
+}
