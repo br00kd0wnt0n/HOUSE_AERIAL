@@ -109,9 +109,6 @@ const Hotspots = () => {
   // Add secondaryMode state
   const [secondaryMode, setSecondaryMode] = useState('classic');
   
-  // Add flag to track when a shape has just been saved to preserve edited coordinates
-  const [shapeSaveInProgress, setShapeSaveInProgress] = useState(false);
-
   // Keep processedHotspots in sync with hotspots when they change
   useEffect(() => {
     if (hotspots && hotspots.length > 0) {
@@ -1027,9 +1024,6 @@ const Hotspots = () => {
     if (!selectedHotspot || points.length < 3) return;
     
     try {
-      // Set flag to indicate we're in the middle of saving a shape
-      setShapeSaveInProgress(true);
-      
       // Calculate the center point for proper map pin positioning
       let centerPoint = {
         x: 0,
@@ -1125,9 +1119,6 @@ const Hotspots = () => {
         description: error.message || "Failed to update hotspot shape",
         variant: "destructive"
       });
-    } finally {
-      // Clear shape save flag after completion
-      setShapeSaveInProgress(false);
     }
   }, [selectedHotspot, points, updateHotspot, hotspotForm, setIsEditingPoints, setDrawingMode, fetchHotspots, selectedLocation, drawExistingHotspotsRef, toast, canvasRef]);
 
