@@ -114,17 +114,92 @@ const Experience = () => {
       const hotspotId = hotspot._id;
       const loader = videoLoader.current;
       
-      if (playlist?.sequence?.diveInVideo && !loader.isLoaded(`diveIn_${hotspotId}`)) {
-        loader.add(`diveIn_${hotspotId}`, playlist.sequence.diveInVideo.accessUrl);
+      // Track videos that were added to the loader for this hotspot
+      const addedVideos = {
+        diveIn: null,
+        floorLevel: null,
+        zoomOut: null
+      };
+      
+      if (playlist?.sequence?.diveInVideo) {
+        const diveInVideo = playlist.sequence.diveInVideo;
+        if (!loader.isLoaded(`diveIn_${hotspotId}`)) {
+          loader.add(`diveIn_${hotspotId}`, diveInVideo.accessUrl);
+        }
+        // Store the video info with its hotspotId for the videoAssets state
+        addedVideos.diveIn = {
+          ...diveInVideo,
+          hotspotId: hotspotId
+        };
       }
       
-      if (playlist?.sequence?.floorLevelVideo && !loader.isLoaded(`floorLevel_${hotspotId}`)) {
-        loader.add(`floorLevel_${hotspotId}`, playlist.sequence.floorLevelVideo.accessUrl);
+      if (playlist?.sequence?.floorLevelVideo) {
+        const floorLevelVideo = playlist.sequence.floorLevelVideo;
+        if (!loader.isLoaded(`floorLevel_${hotspotId}`)) {
+          loader.add(`floorLevel_${hotspotId}`, floorLevelVideo.accessUrl);
+        }
+        // Store the video info with its hotspotId for the videoAssets state
+        addedVideos.floorLevel = {
+          ...floorLevelVideo,
+          hotspotId: hotspotId
+        };
       }
       
-      if (playlist?.sequence?.zoomOutVideo && !loader.isLoaded(`zoomOut_${hotspotId}`)) {
-        loader.add(`zoomOut_${hotspotId}`, playlist.sequence.zoomOutVideo.accessUrl);
+      if (playlist?.sequence?.zoomOutVideo) {
+        const zoomOutVideo = playlist.sequence.zoomOutVideo;
+        if (!loader.isLoaded(`zoomOut_${hotspotId}`)) {
+          loader.add(`zoomOut_${hotspotId}`, zoomOutVideo.accessUrl);
+        }
+        // Store the video info with its hotspotId for the videoAssets state
+        addedVideos.zoomOut = {
+          ...zoomOutVideo,
+          hotspotId: hotspotId
+        };
       }
+      
+      // Update videoAssets directly to ensure videos are associated with the correct hotspot
+      setVideoAssets(prev => {
+        const updatedAssets = { ...prev };
+        
+        // Add the videos to their respective arrays, making sure hotspotId is included
+        if (addedVideos.diveIn) {
+          // Check if this video already exists in the array
+          const existingIndex = updatedAssets.diveIn ? 
+            updatedAssets.diveIn.findIndex(v => v._id === addedVideos.diveIn._id) : -1;
+            
+          if (existingIndex >= 0) {
+            // Update existing video entry
+            updatedAssets.diveIn[existingIndex] = addedVideos.diveIn;
+          } else {
+            // Add as a new video
+            updatedAssets.diveIn = [...(updatedAssets.diveIn || []), addedVideos.diveIn];
+          }
+        }
+        
+        if (addedVideos.floorLevel) {
+          const existingIndex = updatedAssets.floorLevel ? 
+            updatedAssets.floorLevel.findIndex(v => v._id === addedVideos.floorLevel._id) : -1;
+            
+          if (existingIndex >= 0) {
+            updatedAssets.floorLevel[existingIndex] = addedVideos.floorLevel;
+          } else {
+            updatedAssets.floorLevel = [...(updatedAssets.floorLevel || []), addedVideos.floorLevel];
+          }
+        }
+        
+        if (addedVideos.zoomOut) {
+          const existingIndex = updatedAssets.zoomOut ? 
+            updatedAssets.zoomOut.findIndex(v => v._id === addedVideos.zoomOut._id) : -1;
+            
+          if (existingIndex >= 0) {
+            updatedAssets.zoomOut[existingIndex] = addedVideos.zoomOut;
+          } else {
+            updatedAssets.zoomOut = [...(updatedAssets.zoomOut || []), addedVideos.zoomOut];
+          }
+        }
+        
+        return updatedAssets;
+      });
       
       return playlist;
     } catch (error) {
@@ -142,6 +217,19 @@ const Experience = () => {
     if (!primaryHotspots.length) return;
     
     console.log(`Starting to preload videos for ${primaryHotspots.length} PRIMARY hotspots`);
+    
+    // Ensure video assets state is initialized properly
+    setVideoAssets(prev => {
+      // Initialize video assets structure if needed
+      const updated = prev || {
+        aerial: aerialVideo,
+        transition: transitionVideo,
+        diveIn: [],
+        floorLevel: [],
+        zoomOut: []
+      };
+      return updated;
+    });
     
     // Preload in small batches to avoid too many concurrent requests
     const batchSize = 2;
@@ -161,9 +249,13 @@ const Experience = () => {
           }
           
           // Load the playlist for this hotspot
-          await loadPlaylistForHotspot(hotspot);
+          const playlist = await loadPlaylistForHotspot(hotspot);
           
-          console.log(`Added hotspot ${hotspot._id} videos to preload queue`);
+          if (playlist) {
+            console.log(`Added hotspot ${hotspot._id} videos to preload queue`);
+          } else {
+            console.warn(`Failed to load playlist for hotspot ${hotspot._id}`);
+          }
         } catch (error) {
           console.error(`Error preloading videos for hotspot ${hotspot._id}:`, error);
         }
@@ -183,7 +275,7 @@ const Experience = () => {
     }
     
     console.log('Finished preload process for hotspot videos');
-  }, [loadPlaylistForHotspot]);
+  }, [loadPlaylistForHotspot, aerialVideo, transitionVideo]);
   
   // Set current location based on URL param
   useEffect(() => {
@@ -343,14 +435,58 @@ const Experience = () => {
         
         // Update video assets state only when we receive new data
         if (diveInAssets.length > 0 || floorLevelAssets.length > 0 || zoomOutAssets.length > 0) {
-          setVideoAssets(prev => ({
-            ...(prev || {}),
-            aerial: aerialVideo, // Always use the latest aerial video
-            transition: transitionVideo, // Always use the latest transition video
-            diveIn: diveInAssets.length > 0 ? diveInAssets : (prev?.diveIn || []),
-            floorLevel: floorLevelAssets.length > 0 ? floorLevelAssets : (prev?.floorLevel || []),
-            zoomOut: zoomOutAssets.length > 0 ? zoomOutAssets : (prev?.zoomOut || [])
-          }));
+          setVideoAssets(prev => {
+            // Create a new object to avoid mutating the previous state
+            const updatedAssets = {
+              ...(prev || {}),
+              aerial: aerialVideo, // Always use the latest aerial video
+              transition: transitionVideo, // Always use the latest transition video
+            };
+            
+            // Preserve hotspot associations when updating the video assets
+            // For diveIn videos
+            if (diveInAssets.length > 0) {
+              // Start with existing videos that might have hotspotId associations
+              const existingWithHotspotIds = prev?.diveIn?.filter(v => v.hotspotId) || [];
+              // Add new videos
+              updatedAssets.diveIn = [
+                ...existingWithHotspotIds,
+                ...diveInAssets.filter(newVideo => 
+                  !existingWithHotspotIds.some(existing => existing._id === newVideo._id)
+                )
+              ];
+            } else {
+              updatedAssets.diveIn = prev?.diveIn || [];
+            }
+            
+            // For floorLevel videos
+            if (floorLevelAssets.length > 0) {
+              const existingWithHotspotIds = prev?.floorLevel?.filter(v => v.hotspotId) || [];
+              updatedAssets.floorLevel = [
+                ...existingWithHotspotIds,
+                ...floorLevelAssets.filter(newVideo => 
+                  !existingWithHotspotIds.some(existing => existing._id === newVideo._id)
+                )
+              ];
+            } else {
+              updatedAssets.floorLevel = prev?.floorLevel || [];
+            }
+            
+            // For zoomOut videos
+            if (zoomOutAssets.length > 0) {
+              const existingWithHotspotIds = prev?.zoomOut?.filter(v => v.hotspotId) || [];
+              updatedAssets.zoomOut = [
+                ...existingWithHotspotIds,
+                ...zoomOutAssets.filter(newVideo => 
+                  !existingWithHotspotIds.some(existing => existing._id === newVideo._id)
+                )
+              ];
+            } else {
+              updatedAssets.zoomOut = prev?.zoomOut || [];
+            }
+            
+            return updatedAssets;
+          });
         }
         
         if (buttonAssets && buttonAssets.length > 0) {
@@ -620,12 +756,21 @@ const Experience = () => {
 
   // Helper function to check if we're in a playlist sequence
   function inPlaylistMode() {
-    return currentVideo === 'diveIn' || 
-           currentVideo === 'floorLevel' || 
-           currentVideo === 'zoomOut' ||
-           currentVideo?.startsWith('diveIn_') ||
-           currentVideo?.startsWith('floorLevel_') ||
-           currentVideo?.startsWith('zoomOut_');
+    // Check for standard video types
+    if (currentVideo === 'diveIn' || 
+        currentVideo === 'floorLevel' || 
+        currentVideo === 'zoomOut') {
+      return true;
+    }
+    
+    // Check for video types that include hotspot IDs
+    if (typeof currentVideo === 'string') {
+      return currentVideo.startsWith('diveIn_') || 
+             currentVideo.startsWith('floorLevel_') || 
+             currentVideo.startsWith('zoomOut_');
+    }
+    
+    return false;
   }
 };
 

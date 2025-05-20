@@ -208,8 +208,9 @@ export function VideoProvider({ children }) {
             playlist.sequence.zoomOutVideo.accessUrl = formatVideoUrl(playlist.sequence.zoomOutVideo.accessUrl);
           }
           
-          // Store the sequence in state
+          // Store the sequence in state and include the hotspot ID to identify which sequence it is
           setVideoSequence({
+            hotspotId: hotspot._id,
             diveIn: playlist.sequence.diveInVideo,
             floorLevel: playlist.sequence.floorLevelVideo,
             zoomOut: playlist.sequence.zoomOutVideo
@@ -218,8 +219,8 @@ export function VideoProvider({ children }) {
           // Small artificial delay to ensure videos are fully preloaded
           // This prevents the spinner from appearing during transitions
           setTimeout(() => {
-            // Start playing the sequence
-            setCurrentVideo('diveIn');
+            // Start playing the sequence - use format 'diveIn_hotspotId' to identify which hotspot's playlist we're playing
+            setCurrentVideo(`diveIn_${hotspot._id}`);
           }, 50); // 50ms delay is imperceptible but helps with preloading
         } else {
           console.error('Playlist is incomplete. One or more videos missing.');
@@ -243,15 +244,28 @@ export function VideoProvider({ children }) {
   
   // Handle video sequence transitions
   const handleVideoEnded = (videoType) => {
-    if (videoType === 'diveIn') {
-      setCurrentVideo('floorLevel');
-    } else if (videoType === 'floorLevel') {
-      setCurrentVideo('zoomOut');
-    } else if (videoType === 'zoomOut' || videoType === 'transition') {
+    // Check if we're in a sequence by looking for the hotspot ID in the video type
+    const isSequence = videoType.includes('_');
+    
+    if (isSequence) {
+      // Extract the hotspot ID from the video type (e.g., 'diveIn_123abc' -> '123abc')
+      const [baseType, hotspotId] = videoType.split('_');
+      
+      // Determine the next video in the sequence
+      if (baseType === 'diveIn') {
+        setCurrentVideo(`floorLevel_${hotspotId}`);
+      } else if (baseType === 'floorLevel') {
+        setCurrentVideo(`zoomOut_${hotspotId}`);
+      } else if (baseType === 'zoomOut') {
+        setCurrentVideo('aerial');
+        setActiveHotspot(null);
+      }
+    } else if (videoType === 'transition') {
+      // For the transition video
       setCurrentVideo('aerial');
       setActiveHotspot(null);
     }
-    // Aerial video loops automatically
+    // Aerial video loops automatically, so no need to handle it here
   };
   
   // Track video loading progress

@@ -67,29 +67,49 @@ exports.updatePlaylist = async (req, res) => {
     
     // Only update sequence for PRIMARY hotspots
     if (hotspot.type === 'PRIMARY') {
-      // Update video sequence
-      if (diveInVideo) {
-        const asset = await Asset.findById(diveInVideo);
-        if (!asset || asset.type !== 'DiveIn') {
-          return res.status(400).json({ error: 'Invalid DiveIn video asset' });
+      // Check if diveInVideo is defined in the request (including empty string)
+      if (diveInVideo !== undefined) {
+        if (diveInVideo === '') {
+          // Remove the video if an empty string is provided
+          playlist.sequence.diveInVideo = null;
+        } else {
+          // Otherwise, validate and update with the new video
+          const asset = await Asset.findById(diveInVideo);
+          if (!asset || asset.type !== 'DiveIn') {
+            return res.status(400).json({ error: 'Invalid DiveIn video asset' });
+          }
+          playlist.sequence.diveInVideo = diveInVideo;
         }
-        playlist.sequence.diveInVideo = diveInVideo;
       }
       
-      if (floorLevelVideo) {
-        const asset = await Asset.findById(floorLevelVideo);
-        if (!asset || asset.type !== 'FloorLevel') {
-          return res.status(400).json({ error: 'Invalid FloorLevel video asset' });
+      // Check if floorLevelVideo is defined in the request (including empty string)
+      if (floorLevelVideo !== undefined) {
+        if (floorLevelVideo === '') {
+          // Remove the video if an empty string is provided
+          playlist.sequence.floorLevelVideo = null;
+        } else {
+          // Otherwise, validate and update with the new video
+          const asset = await Asset.findById(floorLevelVideo);
+          if (!asset || asset.type !== 'FloorLevel') {
+            return res.status(400).json({ error: 'Invalid FloorLevel video asset' });
+          }
+          playlist.sequence.floorLevelVideo = floorLevelVideo;
         }
-        playlist.sequence.floorLevelVideo = floorLevelVideo;
       }
       
-      if (zoomOutVideo) {
-        const asset = await Asset.findById(zoomOutVideo);
-        if (!asset || asset.type !== 'ZoomOut') {
-          return res.status(400).json({ error: 'Invalid ZoomOut video asset' });
+      // Check if zoomOutVideo is defined in the request (including empty string)
+      if (zoomOutVideo !== undefined) {
+        if (zoomOutVideo === '') {
+          // Remove the video if an empty string is provided
+          playlist.sequence.zoomOutVideo = null;
+        } else {
+          // Otherwise, validate and update with the new video
+          const asset = await Asset.findById(zoomOutVideo);
+          if (!asset || asset.type !== 'ZoomOut') {
+            return res.status(400).json({ error: 'Invalid ZoomOut video asset' });
+          }
+          playlist.sequence.zoomOutVideo = zoomOutVideo;
         }
-        playlist.sequence.zoomOutVideo = zoomOutVideo;
       }
     }
     

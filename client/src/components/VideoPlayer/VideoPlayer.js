@@ -112,6 +112,18 @@ const VideoPlayer = ({
            videoType?.startsWith('zoomOut_');
   }, []);
 
+  // Extract the base type from a video type string (e.g., 'diveIn_123abc' -> 'diveIn')
+  const getBaseVideoType = useCallback((videoType) => {
+    if (!videoType || typeof videoType !== 'string') return '';
+    return videoType.includes('_') ? videoType.split('_')[0] : videoType;
+  }, []);
+
+  // Extract the hotspot ID from a video type string (e.g., 'diveIn_123abc' -> '123abc')
+  const getHotspotIdFromVideoType = useCallback((videoType) => {
+    if (!videoType || typeof videoType !== 'string' || !videoType.includes('_')) return null;
+    return videoType.split('_')[1];
+  }, []);
+
   // Track when we enter a playlist sequence
   useEffect(() => {
     // Check if this is a playlist sequence video
@@ -122,15 +134,17 @@ const VideoPlayer = ({
       setInPlaylistSequence(true);
       inSequenceRef.current = true;
       
+      // Get the base video type for determining transitions
+      const baseVideoType = getBaseVideoType(currentVideo);
+      
       // Set transitioning flag at the start of video change
-      if (currentVideo === 'diveIn' || currentVideo?.startsWith('diveIn_')) {
+      if (baseVideoType === 'diveIn') {
         // Only set transitioning when entering the sequence
         isTransitioningRef.current = true;
         setTimeout(() => {
           isTransitioningRef.current = false;
         }, 3000); // Extend to 3 seconds
-      } else if (currentVideo === 'floorLevel' || currentVideo?.startsWith('floorLevel_') ||
-                currentVideo === 'zoomOut' || currentVideo?.startsWith('zoomOut_')) {
+      } else if (baseVideoType === 'floorLevel' || baseVideoType === 'zoomOut') {
         // Set transitioning for subsequent videos in sequence
         isTransitioningRef.current = true;
         setTimeout(() => {
@@ -156,7 +170,7 @@ const VideoPlayer = ({
         }, 3000); // Extend to 3 seconds
       }
     }
-  }, [currentVideo, activeHotspot, inPlaylistSequence, isSequenceVideo]);
+  }, [currentVideo, activeHotspot, inPlaylistSequence, isSequenceVideo, getBaseVideoType]);
 
   // Preload all videos in a sequence when we detect an active hotspot
   useEffect(() => {
@@ -240,21 +254,41 @@ const VideoPlayer = ({
     
     let source = null;
     
-    // Check if we're playing a sequence video and use the preloaded source if available
+    // Check if we're playing a sequence video
     if ((inPlaylistSequence || inSequenceRef.current) && activeHotspot) {
-      const hotspotId = activeHotspot._id;
+      // Extract hotspot ID from the currentVideo if available, otherwise use activeHotspot._id
+      const hotspotId = getHotspotIdFromVideoType(currentVideo) || activeHotspot._id;
+      const baseVideoType = getBaseVideoType(currentVideo);
+      
+      // Debug the videoAssets arrays
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Looking for ${baseVideoType} video for hotspot ${hotspotId}`);
+        if (videoAssets[baseVideoType]) {
+          console.log(`Available ${baseVideoType} videos:`, 
+            videoAssets[baseVideoType].map(v => ({
+              id: v._id,
+              hotspotId: v.hotspotId || 'none',
+              name: v.name
+            }))
+          );
+        } else {
+          console.warn(`No ${baseVideoType} videos available in videoAssets`);
+        }
+      }
+      
+      // Check if we have preloaded videos for this specific hotspot
       const sequenceVideos = sequenceVideosRef.current[hotspotId];
       
       if (sequenceVideos?.loaded) {
         // Mark that videos are preloaded so we don't show loading indicators
         sequencePreloadedRef.current = true;
         
-        // Get preloaded URL from sequence cache
-        if (currentVideo === 'diveIn' || currentVideo.startsWith('diveIn_')) {
+        // Get preloaded URL from sequence cache for the specific hotspot
+        if (baseVideoType === 'diveIn') {
           source = sequenceVideos.diveIn;
-        } else if (currentVideo === 'floorLevel' || currentVideo.startsWith('floorLevel_')) {
+        } else if (baseVideoType === 'floorLevel') {
           source = sequenceVideos.floorLevel;
-        } else if (currentVideo === 'zoomOut' || currentVideo.startsWith('zoomOut_')) {
+        } else if (baseVideoType === 'zoomOut') {
           source = sequenceVideos.zoomOut;
         }
         
@@ -280,15 +314,17 @@ const VideoPlayer = ({
       
       source = videoAssets.transition.accessUrl;
     } else if (activeHotspot) {
-      // Handle playlist videos
-      const [type, hotspotId] = currentVideo.split('_');
+      // For playlist videos with format "type_hotspotId"
+      const baseType = getBaseVideoType(currentVideo);
+      const hotspotId = getHotspotIdFromVideoType(currentVideo) || activeHotspot._id;
       
-      if (!videoAssets[type]) {
-        console.error(`Video assets for ${type} not found:`, videoAssets);
+      if (!videoAssets[baseType]) {
+        console.error(`Video assets for ${baseType} not found:`, videoAssets);
         return null;
       }
       
-      const video = videoAssets[type]?.find(v => v.hotspotId === hotspotId);
+      // Find the video for the specific hotspot
+      const video = videoAssets[baseType]?.find(v => v.hotspotId === hotspotId);
       
       if (video) {
         if (!video.accessUrl) {
@@ -298,7 +334,13 @@ const VideoPlayer = ({
         
         source = video.accessUrl;
       } else {
-        console.error(`Playlist video (${type}_${hotspotId}) not found in assets:`, videoAssets[type]);
+        // Improved error message with more context
+        console.error(
+          `Playlist video (${baseType} for hotspot ${hotspotId}) not found in assets:`, 
+          videoAssets[baseType],
+          `\nActive hotspot:`, activeHotspot,
+          `\nAvailable videos:`, videoAssets[baseType]?.map(v => `${v.name} (${v.hotspotId || 'no hotspot'})`)
+        );
       }
     }
     
@@ -306,7 +348,7 @@ const VideoPlayer = ({
       return formatVideoUrl(source);
     }
     return source;
-  }, [videoAssets, currentVideo, activeHotspot, inPlaylistSequence, formatVideoUrl, inSequenceRef]);
+  }, [videoAssets, currentVideo, activeHotspot, inPlaylistSequence, formatVideoUrl, inSequenceRef, getBaseVideoType, getHotspotIdFromVideoType]);
 
   // Define handleVideoError with useCallback to avoid recreation on every render
   const handleVideoError = useCallback((e) => {
