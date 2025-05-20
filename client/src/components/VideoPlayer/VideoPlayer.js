@@ -305,6 +305,10 @@ const VideoPlayer = ({
         return null;
       }
       
+      // Log which aerial video we're playing to help debug location switching issues
+      console.log(`Playing aerial video: ${videoAssets.aerial.name} (${videoAssets.aerial._id})`, 
+                  videoAssets.aerial.locationId ? `for location ${videoAssets.aerial.locationId}` : '');
+      
       source = videoAssets.aerial.accessUrl;
     } else if (currentVideo === 'transition' && videoAssets.transition) {
       if (!videoAssets.transition.accessUrl) {
@@ -312,6 +316,7 @@ const VideoPlayer = ({
         return null;
       }
       
+      console.log(`Playing transition video: ${videoAssets.transition.name}`);
       source = videoAssets.transition.accessUrl;
     } else if (activeHotspot) {
       // For playlist videos with format "type_hotspotId"
@@ -345,7 +350,16 @@ const VideoPlayer = ({
     }
     
     if (source) {
-      return formatVideoUrl(source);
+      // First format the URL properly
+      const formattedSource = formatVideoUrl(source);
+      
+      // Then add a cache-busting parameter to ensure the browser doesn't cache the video
+      // This is critical for location switching to work properly
+      const sourceWithCache = formattedSource.includes('?') ? 
+        `${formattedSource}&nocache=${Date.now()}` : 
+        `${formattedSource}?nocache=${Date.now()}`;
+      
+      return sourceWithCache;
     }
     return source;
   }, [videoAssets, currentVideo, activeHotspot, inPlaylistSequence, formatVideoUrl, inSequenceRef, getBaseVideoType, getHotspotIdFromVideoType]);

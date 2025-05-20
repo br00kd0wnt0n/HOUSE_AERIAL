@@ -56,6 +56,9 @@ export function VideoProvider({ children }) {
   const zoomOutVideoRef = useRef(null);
   const transitionVideoRef = useRef(null);
   
+  // Add ref to track the last location ID to detect changes
+  const lastLocationIdRef = useRef(null);
+  
   // Load initial locations only once
   useEffect(() => {
     let isMounted = true;
@@ -84,20 +87,49 @@ export function VideoProvider({ children }) {
     };
   }, []); // Empty dependency array - only run once
   
-  // Load assets for current location with improved caching
+  // Enhanced setCurrentLocation function with additional validation
+  const handleLocationChange = (location) => {
+    if (!location) return;
+    
+    // Track location changes for debugging
+    const isLocationChange = lastLocationIdRef.current !== location._id;
+    if (isLocationChange) {
+      console.log(`Changing location from ${lastLocationIdRef.current || 'initial'} to ${location._id} (${location.name})`);
+      lastLocationIdRef.current = location._id;
+    }
+    
+    // Update currentLocation state
+    setCurrentLocation(location);
+  };
+  
+  // Load assets for current location with improved caching and cache validation
   useEffect(() => {
     if (!currentLocation) return;
     
     let isMounted = true;
+    console.log(`Loading assets for location ${currentLocation._id} (${currentLocation.name})`);
     
     const fetchAssets = async () => {
-      // Check if we already have assets cached for this location
-      if (assetsCache[currentLocation._id]) {
+      // Check if cache exists and is valid for this location
+      const hasValidCache = assetsCache[currentLocation._id] && 
+                           assetsCache[currentLocation._id].aerial && 
+                           assetsCache[currentLocation._id].aerial.accessUrl;
+      
+      if (hasValidCache) {
         const cachedAssets = assetsCache[currentLocation._id];
         if (isMounted) {
-          console.log('Using cached assets for location:', currentLocation.name);
-          console.log('Cached aerial video:', cachedAssets.aerial);
-          setAerialVideo(cachedAssets.aerial);
+          console.log(`Using cached assets for location: ${currentLocation.name}`);
+          console.log(`Cached aerial video: ${cachedAssets.aerial.name} (${cachedAssets.aerial._id})`);
+          
+          // Ensure the aerial video has the location ID tagged for debugging
+          const updatedAerialVideo = {
+            ...cachedAssets.aerial,
+            locationId: currentLocation._id, // Add explicit location tag
+            locationName: currentLocation.name
+          };
+          
+          // Update states with cached data
+          setAerialVideo(updatedAerialVideo);
           setTransitionVideo(cachedAssets.transition);
           setHotspots(cachedAssets.hotspots);
         }
@@ -109,7 +141,7 @@ export function VideoProvider({ children }) {
       }
       
       try {
-        console.log('Fetching assets for location:', currentLocation.name);
+        console.log(`Fetching new assets for location: ${currentLocation.name}`);
         
         // Load all assets in parallel
         const [aerialResponse, transitionResponse, hotspotsResponse] = await Promise.all([
@@ -122,33 +154,38 @@ export function VideoProvider({ children }) {
         
         console.log('Aerial video response:', aerialResponse.data);
         
-        const aerialVideo = aerialResponse.data.length > 0 ? aerialResponse.data[0] : null;
-        const transitionVideo = transitionResponse.data.length > 0 ? transitionResponse.data[0] : null;
+        const aerialAsset = aerialResponse.data.length > 0 ? aerialResponse.data[0] : null;
+        const transitionAsset = transitionResponse.data.length > 0 ? transitionResponse.data[0] : null;
         const hotspots = hotspotsResponse.data;
         
         // Make sure the video URLs are properly formatted
-        if (aerialVideo && aerialVideo.accessUrl) {
-          aerialVideo.accessUrl = formatVideoUrl(aerialVideo.accessUrl);
-          console.log('Formatted aerial video URL:', aerialVideo.accessUrl);
+        if (aerialAsset && aerialAsset.accessUrl) {
+          aerialAsset.accessUrl = formatVideoUrl(aerialAsset.accessUrl);
+          console.log(`Formatted aerial video URL for ${currentLocation.name}:`, aerialAsset.accessUrl);
+          
+          // Tag the aerial video with location info for debugging
+          aerialAsset.locationId = currentLocation._id;
+          aerialAsset.locationName = currentLocation.name;
         }
         
-        if (transitionVideo && transitionVideo.accessUrl) {
-          transitionVideo.accessUrl = formatVideoUrl(transitionVideo.accessUrl);
-          console.log('Formatted transition video URL:', transitionVideo.accessUrl);
+        if (transitionAsset && transitionAsset.accessUrl) {
+          transitionAsset.accessUrl = formatVideoUrl(transitionAsset.accessUrl);
+          console.log('Formatted transition video URL:', transitionAsset.accessUrl);
         }
         
         // Cache the assets for this location
         setAssetsCache(prev => ({
           ...prev,
           [currentLocation._id]: {
-            aerial: aerialVideo,
-            transition: transitionVideo,
+            aerial: aerialAsset,
+            transition: transitionAsset,
             hotspots: hotspots
           }
         }));
         
-        setAerialVideo(aerialVideo);
-        setTransitionVideo(transitionVideo);
+        // Update states with newly fetched data
+        setAerialVideo(aerialAsset);
+        setTransitionVideo(transitionAsset);
         setHotspots(hotspots);
         setIsLoading(false);
       } catch (error) {
@@ -238,7 +275,7 @@ export function VideoProvider({ children }) {
     if (newLocation) {
       // Play transition video first
       setCurrentVideo('transition');
-      setCurrentLocation(newLocation);
+      handleLocationChange(newLocation);
     }
   };
   
@@ -277,11 +314,18 @@ export function VideoProvider({ children }) {
     });
   };
   
+  // Add debug info about current aerial video
+  useEffect(() => {
+    if (aerialVideo) {
+      console.log(`Current aerial video: ${aerialVideo.name} for location ${aerialVideo.locationName || 'unknown'}`);
+    }
+  }, [aerialVideo]);
+  
   // Context value
   const value = {
     locations,
     currentLocation,
-    setCurrentLocation,
+    setCurrentLocation: handleLocationChange, // Use enhanced function
     aerialVideo,
     transitionVideo,
     currentVideo,

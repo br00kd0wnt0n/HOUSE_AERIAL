@@ -610,9 +610,19 @@ const Experience = () => {
   const handleLocationChange = (newLocationId) => {
     // Don't do anything if we're already on the transition video
     if (currentVideo === 'transition') return;
+    
+    // Verify we're changing to a different location
+    if (locationId === newLocationId) {
+      console.log(`Ignoring location change request - already at ${newLocationId}`);
+      return;
+    }
 
+    // Log debug info about current state before transition
+    console.log(`Starting location change from ${locationId} to ${newLocationId}`);
+    console.log(`Current aerial video:`, aerialVideo?.name, aerialVideo?._id, aerialVideo?.locationId || 'unknown');
+    
     // Play transition video first
-    console.log(`Changing location to: ${newLocationId}`);
+    console.log(`Setting video to transition before navigating to: ${newLocationId}`);
     setCurrentVideo('transition');
     
     // Store a reference to the video element
@@ -621,7 +631,11 @@ const Experience = () => {
     if (transitionVideoElement) {
       // Add a one-time event listener for the transition video's 'ended' event
       const handleTransitionEnd = () => {
-        console.log('Transition video ended, navigating to new location');
+        console.log(`Transition video ended, navigating to new location: ${newLocationId}`);
+        
+        // Force clear some state refs to ensure clean transition
+        videoLoader.current.clear();
+        
         // Navigate only when the transition video has finished playing
         navigate(`/experience/${newLocationId}`);
         
@@ -635,6 +649,11 @@ const Experience = () => {
       console.warn('No video reference available, using fallback timeout');
       // Use a longer timeout to ensure transition video has a chance to play
       setTimeout(() => {
+        console.log(`Timeout ended, navigating to new location: ${newLocationId}`);
+        
+        // Force clear some state refs to ensure clean transition
+        videoLoader.current.clear();
+        
         navigate(`/experience/${newLocationId}`);
       }, 3000); // Use 3 seconds as a safe fallback
     }
