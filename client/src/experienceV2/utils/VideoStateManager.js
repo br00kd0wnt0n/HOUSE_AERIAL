@@ -18,16 +18,18 @@ const VIDEO_STATES = {
   DIVE_IN: 'diveIn',
   FLOOR_LEVEL: 'floorLevel',
   ZOOM_OUT: 'zoomOut',
-  TRANSITION: 'transition'
+  TRANSITION: 'transition',
+  LOCATION_TRANSITION: 'locationTransition'
 };
 
 // State machine transitions
 const STATE_TRANSITIONS = {
-  [VIDEO_STATES.AERIAL]: [VIDEO_STATES.DIVE_IN],
+  [VIDEO_STATES.AERIAL]: [VIDEO_STATES.DIVE_IN, VIDEO_STATES.LOCATION_TRANSITION],
   [VIDEO_STATES.DIVE_IN]: [VIDEO_STATES.FLOOR_LEVEL],
   [VIDEO_STATES.FLOOR_LEVEL]: [VIDEO_STATES.ZOOM_OUT],
   [VIDEO_STATES.ZOOM_OUT]: [VIDEO_STATES.AERIAL],
-  [VIDEO_STATES.TRANSITION]: [VIDEO_STATES.AERIAL]
+  [VIDEO_STATES.TRANSITION]: [VIDEO_STATES.AERIAL],
+  [VIDEO_STATES.LOCATION_TRANSITION]: [VIDEO_STATES.AERIAL]
 };
 
 class VideoStateManager {
@@ -46,6 +48,11 @@ class VideoStateManager {
     this.inPlaylistMode = false;
     this.playlistIndex = 0;
     this.playlistVideos = [];
+    
+    // Location transition tracking
+    this.sourceLocation = null;
+    this.destinationLocation = null;
+    this.inLocationTransition = false;
     
     // Callbacks
     this.onVideoChange = options.onVideoChange || (() => {});
@@ -263,6 +270,16 @@ class VideoStateManager {
   handleVideoEnded(videoType) {
     logger.debug(MODULE, `Video ended: ${videoType}`);
     
+    // Check if this is a location transition video
+    const isLocationTransition = videoType.startsWith(VIDEO_STATES.LOCATION_TRANSITION) || 
+                                 videoType === VIDEO_STATES.LOCATION_TRANSITION;
+    
+    if (isLocationTransition && this.inLocationTransition) {
+      logger.info(MODULE, 'Location transition video ended, completing transition');
+      this.completeLocationTransition();
+      return;
+    }
+    
     // Check if we're in a playlist, play the next video
     if (this.inPlaylistMode) {
       // Check if this is the last video in the sequence (zoomOut)
@@ -374,6 +391,121 @@ class VideoStateManager {
    */
   getCurrentHotspot() {
     return this.currentHotspot;
+  }
+  
+  /**
+   * Start a location transition
+   * @param {Object} sourceLocation Current location
+   * @param {Object} destinationLocation Target location
+   * @param {Object} transitionVideo Transition video object (optional)
+   * @returns {boolean} Success indicator
+   */
+  startLocationTransition(sourceLocation, destinationLocation, transitionVideo = null) {
+    // Validate locations
+    if (!sourceLocation || !destinationLocation) {
+      logger.error(MODULE, 'Cannot start location transition: missing source or destination location');
+      this.onError('Missing source or destination location');
+      return false;
+    }
+    
+    logger.info(MODULE, `Starting location transition from ${sourceLocation.name} to ${destinationLocation.name}`);
+    
+    // Store location data
+    this.sourceLocation = sourceLocation;
+    this.destinationLocation = destinationLocation;
+    this.inLocationTransition = true;
+    
+    // If we're in a playlist, reset it first
+    if (this.inPlaylistMode) {
+      this.resetPlaylist();
+    }
+    
+    // Set transition state
+    this.currentState = VIDEO_STATES.LOCATION_TRANSITION;
+    this.onVideoChange(VIDEO_STATES.LOCATION_TRANSITION);
+    
+    // If transition video is provided, play it
+    if (transitionVideo && transitionVideo.accessUrl) {
+      logger.info(MODULE, `Playing location transition video: ${transitionVideo.name || 'unknown'}`);
+      
+      const transitionVideoObject = {
+        type: VIDEO_STATES.LOCATION_TRANSITION,
+        id: `locationTransition_${sourceLocation._id}_to_${destinationLocation._id}`,
+        ...transitionVideo
+      };
+      
+      // Load and play the transition video
+      this.onLoadVideo(transitionVideoObject);
+      return true;
+    } else {
+      logger.info(MODULE, 'No transition video available, performing direct location switch');
+      
+      // Complete the transition immediately
+      this.completeLocationTransition();
+      return true;
+    }
+  }
+  
+  /**
+   * Complete a location transition (called after transition video ends or if no video)
+   * @returns {boolean} Success indicator
+   */
+  completeLocationTransition() {
+    if (!this.inLocationTransition) {
+      logger.warn(MODULE, 'No active location transition to complete');
+      return false;
+    }
+    
+    logger.info(MODULE, `Completing location transition to ${this.destinationLocation?.name || 'unknown'}`);
+    
+    // Store destination location ID for the callback before resetting
+    const destinationLocationId = this.destinationLocation?._id;
+    
+    // Reset transition state
+    this.inLocationTransition = false;
+    this.sourceLocation = null;
+    this.destinationLocation = null;
+    
+    // Transition back to aerial state
+    this.currentState = VIDEO_STATES.AERIAL;
+    this.onVideoChange(VIDEO_STATES.AERIAL);
+    
+    // Send signal to load new location's aerial view
+    if (destinationLocationId) {
+      this.onLoadVideo({
+        type: VIDEO_STATES.AERIAL,
+        id: `aerial_${destinationLocationId}`,
+        locationId: destinationLocationId,
+        accessUrl: null // Signal to find the correct aerial URL for new location
+      });
+    }
+    
+    // Return true to indicate successful completion
+    return true;
+  }
+  
+  /**
+   * Check if in location transition mode
+   * @returns {boolean} Location transition mode status
+   */
+  isInLocationTransition() {
+    return this.inLocationTransition;
+  }
+  
+  /**
+   * Get source location for transition
+   * @returns {Object|null} Source location or null
+   */
+  getSourceLocation() {
+    return this.sourceLocation;
+  }
+  
+  /**
+   * Get destination location for transition
+   * @returns {Object|null} Destination location or null
+   */
+  getDestinationLocation() {
+    return this.destinationLocation;
   }
 }
 

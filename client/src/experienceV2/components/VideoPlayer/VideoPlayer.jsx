@@ -378,7 +378,12 @@ const VideoPlayer = ({
   return (
     <div 
       ref={containerRef}
-      className={cn("w-full h-full relative bg-black overflow-hidden", className)}
+      className={cn("w-full h-full relative overflow-hidden", className)}
+      style={{ 
+        background: type === 'aerial' 
+          ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))' 
+          : 'black' 
+      }}
     >
       {src ? (
         <>
@@ -387,8 +392,8 @@ const VideoPlayer = ({
             src={src}
             className={cn(
               "video-element",
-              // Remove object-cover class to prevent distortion
-              type === 'aerial' ? "bg-[#000]" : "bg-black"
+              // Remove specific background colors since we're using gradient on container
+              type === 'aerial' ? "" : ""
             )}
             style={videoStyles}
             playsInline
@@ -404,17 +409,21 @@ const VideoPlayer = ({
             preload="auto"
           />
           
-          {/* Loading indicator */}
-          {!isLoaded && !hasError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          {/* Loading indicator - removed since all videos are pre-cached */}
+          {/* {!isLoaded && !hasError && (
+            <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(239, 249, 251, 0.5)' }}>
               <div className="w-16 h-16 border-4 border-white border-t-netflix-red rounded-full animate-spin"></div>
             </div>
-          )}
+          )} */}
           
           {/* Error indicator */}
           {hasError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <div className="text-white text-center">
+            <div className="absolute inset-0 flex items-center justify-center" style={{ 
+              background: type === 'aerial'
+                ? 'linear-gradient(to bottom, rgba(207, 234, 235, 0.5), rgba(239, 249, 251, 0.5))'
+                : 'rgba(0, 0, 0, 0.75)'
+            }}>
+              <div className="text-netflix-red text-center">
                 <p className="text-netflix-red font-bold mb-2">Error Loading Video</p>
                 <p className="text-sm">Please try reloading the page</p>
               </div>
@@ -422,7 +431,11 @@ const VideoPlayer = ({
           )}
         </>
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-black text-white">
+        <div className="w-full h-full flex items-center justify-center text-netflix-red" style={{ 
+          background: type === 'aerial'
+            ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))'
+            : 'black'
+        }}>
           <p>Video Placeholder ({type})</p>
         </div>
       )}
