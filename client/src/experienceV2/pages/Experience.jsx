@@ -33,10 +33,11 @@ const Experience = () => {
   // Local state
   const [currentVideo, setCurrentVideo] = useState('aerial');
   const [isVideoLoading, setIsVideoLoading] = useState(true);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false); // New state to track actual playback
   const [currentLocation, setCurrentLocation] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [, setUsesServiceWorker] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false); // Start paused to avoid autoplay issues
+  const [isPlaying, setIsPlaying] = useState(true); // Start with playing set to true for autoplay
   const [hotspots, setHotspots] = useState([]);
   const [inPlaylistMode, setInPlaylistMode] = useState(false);
   // eslint-disable-next-line no-unused-vars
@@ -158,8 +159,27 @@ const Experience = () => {
   // Handle user interaction to enable autoplay
   useEffect(() => {
     const handleUserInteraction = () => {
+      // User has interacted, ensure playing is set to true
       setIsPlaying(true);
-      // Remove listener after first interaction
+      
+      // If video is paused, try to play it
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(err => {
+          // If autoplay fails despite user interaction, log the error
+          logger.error(MODULE, 'Error playing video after user interaction:', err);
+          
+          // If it's a NotAllowedError, force muted playback
+          if (err.name === 'NotAllowedError') {
+            logger.info(MODULE, 'Forcing muted playback after user interaction');
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(mutedErr => {
+              logger.error(MODULE, 'Error playing muted video after user interaction:', mutedErr);
+            });
+          }
+        });
+      }
+      
+      // Remove listeners after successful interaction
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
@@ -543,12 +563,30 @@ const Experience = () => {
   const handleVideoLoadStart = useCallback((videoType) => {
     logger.debug(MODULE, `Video load started: ${videoType}`);
     setIsVideoLoading(true);
+    setIsVideoPlaying(false); // Reset playing state when video starts loading
   }, []);
   
   // Handle video load complete
   const handleVideoLoadComplete = useCallback((videoType) => {
     logger.debug(MODULE, `Video load completed: ${videoType}`);
-    setIsVideoLoading(false);
+    
+    // Set a small delay before considering the video fully loaded
+    // This gives the video element time to calculate dimensions properly
+    setTimeout(() => {
+      setIsVideoLoading(false);
+    }, 300);
+  }, []);
+  
+  // Add a new handler for actual video playback
+  const handleVideoPlaying = useCallback(() => {
+    logger.debug(MODULE, `Video is now playing`);
+    
+    // Add a significant delay before setting the playing state to true
+    // This gives the video element more time to fully establish its dimensions
+    setTimeout(() => {
+      logger.info(MODULE, 'Delayed video playing state update - now safe to render hotspots');
+      setIsVideoPlaying(true);
+    }, 1000); // 1 second delay
   }, []);
   
   // Handle back to home button click
@@ -687,17 +725,20 @@ const Experience = () => {
         onEnded={handleVideoEnded}
         onLoadStart={handleVideoLoadStart}
         onLoadComplete={handleVideoLoadComplete}
+        onPlaying={handleVideoPlaying}
         isPlaying={isPlaying}
         onVideoRef={handleVideoRef}
+        key={`video-player-${videoUrl}`}
       />
       
-      {/* Hotspot overlay - only shown for aerial video when not loading */}
-      {currentVideo === 'aerial' && !isVideoLoading && videoRef.current && (
+      {/* Hotspot overlay - only shown for aerial video when fully loaded AND playing */}
+      {currentVideo === 'aerial' && !isVideoLoading && isVideoPlaying && videoRef.current && (
         <HotspotOverlay 
           hotspots={hotspots}
           onHotspotClick={handleHotspotClick}
           videoRef={videoRef}
           debugMode={debugMode}
+          key={`hotspot-overlay-${videoUrl}`}
         />
       )}
       
@@ -709,7 +750,7 @@ const Experience = () => {
         />
       )}
       
-      {/* Play button overlay if not playing */}
+      {/* Play button overlay if autoplay fails - show only if not playing and not loading */}
       {!isPlaying && videoUrl && !isVideoLoading && (
         <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/40">
           <button 
