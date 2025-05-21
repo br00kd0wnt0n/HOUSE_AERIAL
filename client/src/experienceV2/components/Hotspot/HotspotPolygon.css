@@ -1,18 +1,7 @@
-@import "./HotspotVariables.css";
+/* HotspotPolygon.css */
+/* Styles for polygon-style hotspots */
 
-.hotspot-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 10;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
+@import "./HotspotVariables.css";
 
 /* SVG contains the polygon hotspots */
 .hotspot-svg {
@@ -47,16 +36,6 @@
 }
 
 /* Enhanced cursor feedback when hovering over invisible hotspots */
-.hotspot-overlay svg {
-  cursor: default;
-}
-
-/* Use this special rule to make transparent polygons change cursor on hover */
-polygon.hotspot-polygon {
-  cursor: pointer;
-}
-
-/* Show cursor pointer even when polygons are transparent */
 .hotspot-svg:has(.hotspot-polygon:hover) {
   cursor: pointer;
 }
@@ -127,35 +106,4 @@ polygon.hotspot-polygon {
     var(--hotspot-secondary-color-rgb),
     var(--hotspot-stroke-opacity-hover)
   );
-}
-
-/* Map pins and hotspots */
-.hotspot-wrapper {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: all;
-  z-index: 5;
-}
-
-.map-pin-container {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: all;
-  cursor: pointer;
-  opacity: var(--hotspot-invisible-opacity); /* Hidden by default */
-  transition: opacity var(--hotspot-transition-duration)
-      var(--hotspot-transition-easing),
-    transform var(--hotspot-transition-duration)
-      var(--hotspot-transition-easing);
-}
-
-.map-pin-container:hover {
-  transform: translate(-50%, -50%) scale(1.2);
-}
-
-/* Map pin image */
-.map-pin-image {
-  width: var(--hotspot-pin-size);
-  height: var(--hotspot-pin-size);
-  filter: drop-shadow(var(--hotspot-pin-shadow));
 }

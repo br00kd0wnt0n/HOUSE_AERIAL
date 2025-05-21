@@ -19,9 +19,16 @@ const LOG_LEVELS = {
 // Current log level based on environment
 const currentLogLevel = isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
 
-// Cache for tracking repeated logs to avoid spam
-const logCache = new Map();
+// Cache configuration for tracking repeated logs
 const LOG_CACHE_EXPIRY = 10000; // 10 seconds
+const MAX_CACHE_SIZE = 100; // Maximum number of cached log entries
+
+// Cache for tracking repeated logs to avoid spam
+// Using a Map keeps insertion order which helps with cleanup
+const logCache = new Map();
+
+// Timestamp for last cache cleanup
+let lastCleanup = Date.now();
 
 /**
  * Format log message with module name
@@ -31,6 +38,42 @@ const LOG_CACHE_EXPIRY = 10000; // 10 seconds
  */
 const formatMessage = (module, message) => {
   return `[${module}] ${message}`;
+};
+
+/**
+ * Clean up expired log cache entries
+ */
+const cleanupCache = () => {
+  const now = Date.now();
+  
+  // Only clean up every 30 seconds
+  if (now - lastCleanup < 30000) return;
+  
+  lastCleanup = now;
+  
+  // Remove expired entries
+  for (const [key, timestamp] of logCache.entries()) {
+    if (now - timestamp > LOG_CACHE_EXPIRY) {
+      logCache.delete(key);
+    }
+  }
+};
+
+/**
+ * Manage cache size by removing oldest entries when needed
+ */
+const enforceMaxCacheSize = () => {
+  if (logCache.size <= MAX_CACHE_SIZE) return;
+  
+  // Remove oldest entries (first in Map) until we're under the limit
+  const entriesToRemove = logCache.size - MAX_CACHE_SIZE;
+  
+  let count = 0;
+  for (const key of logCache.keys()) {
+    if (count >= entriesToRemove) break;
+    logCache.delete(key);
+    count++;
+  }
 };
 
 /**
@@ -61,14 +104,11 @@ const shouldSuppressRepeat = (module, message, level) => {
   // Update cache with current time
   logCache.set(key, now);
   
-  // Prune old entries occasionally
-  if (Math.random() < 0.1) { // 10% chance to clean up on each log
-    for (const [cacheKey, timestamp] of logCache.entries()) {
-      if (now - timestamp > LOG_CACHE_EXPIRY) {
-        logCache.delete(cacheKey);
-      }
-    }
-  }
+  // Manage cache size
+  enforceMaxCacheSize();
+  
+  // Periodically clean up expired entries
+  cleanupCache();
   
   return false;
 };

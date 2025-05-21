@@ -1,0 +1,38 @@
+/* HotspotMarker.css */
+/* Styles for marker-style hotspots (pins or indicators) */
+
+@import "./HotspotVariables.css";
+
+/* Map pins and hotspots */
+.hotspot-wrapper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  z-index: 5;
+  cursor: pointer;
+}
+
+.map-pin-container {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  cursor: pointer;
+  opacity: var(--hotspot-invisible-opacity); /* Hidden by default */
+  transition: opacity var(--hotspot-transition-duration)
+      var(--hotspot-transition-easing),
+    transform var(--hotspot-transition-duration)
+      var(--hotspot-transition-easing);
+}
+
+.map-pin-container:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* Map pin image */
+.map-pin-image {
+  width: var(--hotspot-pin-size);
+  height: var(--hotspot-pin-size);
+  filter: drop-shadow(var(--hotspot-pin-shadow));
+}
+
+/* Debug mode styles are now in DebugStyles.css */

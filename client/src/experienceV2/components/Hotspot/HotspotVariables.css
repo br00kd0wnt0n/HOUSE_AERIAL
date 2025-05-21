@@ -1,0 +1,52 @@
+/* HotspotVariables.css */
+/* CSS custom properties for consistent styling across hotspot components */
+
+:root {
+  /* Colors - Both hex and RGB values for compatibility */
+  --hotspot-primary-color: #e50914; /* Netflix red */
+  --hotspot-primary-color-rgb: 229, 9, 20;
+  --hotspot-secondary-color: #0078d7; /* Blue */
+  --hotspot-secondary-color-rgb: 0, 120, 215;
+  --hotspot-background-color: #000000; /* Black */
+  --hotspot-background-color-rgb: 0, 0, 0;
+  --hotspot-text-color: #ffffff; /* White */
+  --hotspot-text-color-rgb: 255, 255, 255;
+  --hotspot-highlight-color: #69b4ff; /* Light blue highlight */
+  --hotspot-highlight-color-rgb: 105, 180, 255;
+  --hotspot-warning-color: #ff0000; /* Red for warnings */
+  --hotspot-warning-color-rgb: 255, 0, 0;
+
+  /* Opacities */
+  --hotspot-fill-opacity-base: 0.4;
+  --hotspot-stroke-opacity-base: 0.8;
+  --hotspot-fill-opacity-hover: 0.6;
+  --hotspot-stroke-opacity-hover: 1;
+  --hotspot-normal-opacity: 0.5;
+  --hotspot-hover-opacity: 0.8;
+  --hotspot-invisible-opacity: 0;
+  --hotspot-hover-invisible-opacity: 0.15;
+  --hotspot-debug-opacity: 0.6;
+  --hotspot-debug-background-opacity: 0.75;
+
+  /* Sizes and Dimensions */
+  --hotspot-stroke-width: 2px;
+  --hotspot-pin-size: 32px;
+  --hotspot-marker-size: 10px;
+  --hotspot-debug-font-size: 12px;
+  --hotspot-debug-title-font-size: 14px;
+  --hotspot-debug-label-font-size: 10px;
+  --hotspot-debug-panel-max-width: 350px;
+
+  /* Spacing */
+  --hotspot-debug-padding: 10px;
+  --hotspot-debug-margin: 8px;
+  --hotspot-debug-border-radius: 5px;
+
+  /* Animation */
+  --hotspot-transition-duration: 0.3s;
+  --hotspot-transition-easing: ease;
+
+  /* Shadows */
+  --hotspot-debug-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  --hotspot-pin-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
