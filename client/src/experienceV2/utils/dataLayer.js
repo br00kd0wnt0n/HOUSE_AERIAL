@@ -195,6 +195,98 @@ const dataLayer = {
     return makeRequest('getAssetsByType', { type, locationId }, { forceRefresh });
   },
   
+  // Get transition videos between locations
+  getTransitionVideo: async (sourceLocationId, destinationLocationId, forceRefresh = false) => {
+    if (!sourceLocationId || !destinationLocationId) {
+      logger.error(MODULE, 'Cannot get transition video - missing location IDs');
+      return null;
+    }
+    
+    try {
+      // Try to find transition videos with specific naming pattern
+      const transitionAssets = await dataLayer.getAssetsByType('Transition', null, forceRefresh);
+      
+      if (!Array.isArray(transitionAssets) || transitionAssets.length === 0) {
+        logger.warn(MODULE, 'No transition assets found');
+        return null;
+      }
+      
+      // Look for transition videos that match the source and destination
+      // Try different naming patterns:
+      // 1. transition_[sourceId]_to_[destId]
+      // 2. [sourceName]_to_[destName]
+      // 3. Any transition with metadata matching source and dest
+      
+      logger.debug(MODULE, `Looking for transition from ${sourceLocationId} to ${destinationLocationId}`);
+      
+      // First, get location names for pattern matching
+      let sourceLocation, destinationLocation;
+      const locations = await dataLayer.getLocations();
+      
+      if (Array.isArray(locations)) {
+        sourceLocation = locations.find(loc => loc._id === sourceLocationId);
+        destinationLocation = locations.find(loc => loc._id === destinationLocationId);
+      }
+      
+      const sourceLocationName = sourceLocation?.name?.toLowerCase().replace(/\s+/g, '_');
+      const destLocationName = destinationLocation?.name?.toLowerCase().replace(/\s+/g, '_');
+      
+      // Define patterns to match
+      const idPattern = `transition_${sourceLocationId}_to_${destinationLocationId}`;
+      const namePattern = sourceLocationName && destLocationName ? 
+        `${sourceLocationName}_to_${destLocationName}` : null;
+      
+      // Try to find a matching transition asset
+      let transitionVideo = null;
+      
+      // Try exact ID pattern match
+      transitionVideo = transitionAssets.find(asset => 
+        asset.name && asset.name.toLowerCase().includes(idPattern)
+      );
+      
+      // Try name pattern match
+      if (!transitionVideo && namePattern) {
+        transitionVideo = transitionAssets.find(asset => 
+          asset.name && asset.name.toLowerCase().includes(namePattern)
+        );
+      }
+      
+      // Try checking metadata
+      if (!transitionVideo) {
+        transitionVideo = transitionAssets.find(asset => 
+          asset.metadata && 
+          ((asset.metadata.sourceLocation === sourceLocationId && 
+            asset.metadata.destinationLocation === destinationLocationId) ||
+           (asset.metadata.from === sourceLocationId && 
+            asset.metadata.to === destinationLocationId))
+        );
+      }
+      
+      // If still not found, try generic transition
+      if (!transitionVideo) {
+        transitionVideo = transitionAssets.find(asset => 
+          asset.name && asset.name.toLowerCase().includes('transition') &&
+          asset.accessUrl
+        );
+        
+        if (transitionVideo) {
+          logger.info(MODULE, `No specific transition found, using generic transition: ${transitionVideo.name}`);
+        }
+      }
+      
+      if (transitionVideo) {
+        logger.info(MODULE, `Found transition video: ${transitionVideo.name}`);
+      } else {
+        logger.warn(MODULE, `No suitable transition video found between locations`);
+      }
+      
+      return transitionVideo;
+    } catch (error) {
+      logger.error(MODULE, `Error fetching transition video:`, error);
+      return null;
+    }
+  },
+  
   // Hotspots
   getHotspots: async (forceRefresh = false) => {
     return makeRequest('getHotspots', {}, { forceRefresh });

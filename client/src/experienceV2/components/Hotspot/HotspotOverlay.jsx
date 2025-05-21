@@ -35,6 +35,9 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
   // Combine internal and external debug modes - either can enable it
   const debugMode = externalDebugMode || internalDebugMode;
 
+  // Component-level ref to track if dimensions were ever set
+  const dimensionsSetRef = useRef(false);
+
   // Set mounted flag on component mount/unmount
   useEffect(() => {
     isMountedRef.current = true;
@@ -207,6 +210,9 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
           containerHeight: containerRect.height
         });
         
+        // Mark dimensions as successfully set
+        dimensionsSetRef.current = true;
+        
         // Use consistent 0-100 coordinates for SVG viewBox
         const svgWidth = 100;
         const svgHeight = 100;
@@ -226,6 +232,69 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
     };
   }, [checkVideoElement]);
 
+  // Effect hook that runs once on mount to immediately apply fallback dimensions if needed
+  useEffect(() => {
+    // Only apply immediate fallback if dimensions haven't been set yet
+    if (!displayArea.width && !dimensionsSetRef.current) {
+      logger.info(MODULE, 'Applying immediate fallback dimensions on mount');
+      
+      // Try to get dimensions from video first
+      const videoEl = checkVideoElement();
+      if (videoEl && videoEl.videoWidth && videoEl.videoHeight) {
+        // Video has natural dimensions, use them
+        const parentEl = videoEl.parentElement;
+        const containerWidth = parentEl ? parentEl.clientWidth : window.innerWidth;
+        const containerHeight = parentEl ? parentEl.clientHeight : window.innerHeight;
+        
+        logger.info(MODULE, `Using video natural dimensions: ${videoEl.videoWidth}x${videoEl.videoHeight}`);
+        
+        // Calculate aspect-preserving dimensions
+        const widthScale = containerWidth / videoEl.videoWidth;
+        const heightScale = containerHeight / videoEl.videoHeight;
+        const uniformScale = Math.min(widthScale, heightScale);
+        
+        const displayWidth = videoEl.videoWidth * uniformScale;
+        const displayHeight = videoEl.videoHeight * uniformScale;
+        
+        // Calculate offsets
+        const offsetX = (containerWidth - displayWidth) / 2;
+        const offsetY = (containerHeight - displayHeight) / 2;
+        
+        setDisplayArea({
+          width: displayWidth,
+          height: displayHeight,
+          offsetX,
+          offsetY,
+          containerWidth,
+          containerHeight,
+          isFallback: true
+        });
+        
+        setSvgViewBox('0 0 100 100');
+        dimensionsSetRef.current = true;
+      } else {
+        // Use window dimensions as fallback
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        logger.info(MODULE, `Using window dimensions as fallback: ${windowWidth}x${windowHeight}`);
+        
+        setDisplayArea({
+          width: windowWidth,
+          height: windowHeight,
+          offsetX: 0,
+          offsetY: 0,
+          containerWidth: windowWidth,
+          containerHeight: windowHeight,
+          isFallback: true
+        });
+        
+        setSvgViewBox('0 0 100 100');
+        dimensionsSetRef.current = true;
+      }
+    }
+  }, [displayArea.width, checkVideoElement]);
+
   // Effect to adjust the SVG viewBox based on the video's dimensions
   useEffect(() => {
     // Create a reference to the debounced function
@@ -242,6 +311,32 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
         // Only log this once, not on every render
         if (process.env.NODE_ENV !== 'production') {
           logger.info(MODULE, `Running initial dimensions update (delayed)`);
+        }
+        
+        // Apply fallback dimensions immediately if we're coming directly to this page
+        // This improves the direct URL access experience
+        if (!displayArea.width) {
+          // Try to get a reasonable fallback size from the window
+          const windowWidth = window.innerWidth;
+          const windowHeight = window.innerHeight;
+          
+          if (windowWidth && windowHeight) {
+            logger.info(MODULE, `Applying immediate window-based fallback: ${windowWidth}x${windowHeight}`);
+            
+            // Use the window dimensions as temporary fallback
+            setDisplayArea({
+              width: windowWidth,
+              height: windowHeight,
+              offsetX: 0,
+              offsetY: 0,
+              containerWidth: windowWidth,
+              containerHeight: windowHeight,
+              isFallback: true
+            });
+            
+            setSvgViewBox('0 0 100 100');
+            fallbackApplied = true;
+          }
         }
         
         // FALLBACK: If after 1 second we still don't have dimensions, force some reasonable values
@@ -267,7 +362,38 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
                 
                 setSvgViewBox('0 0 100 100');
                 logger.info(MODULE, `Applied fallback dimensions: ${videoRect.width}x${videoRect.height}`);
+              } else {
+                // If video element has no dimensions yet, use window dimensions
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                
+                setDisplayArea({
+                  width: windowWidth,
+                  height: windowHeight,
+                  offsetX: 0,
+                  offsetY: 0,
+                  containerWidth: windowWidth,
+                  containerHeight: windowHeight,
+                  isFallback: true
+                });
+                
+                setSvgViewBox('0 0 100 100');
+                logger.info(MODULE, `Applied window fallback dimensions: ${windowWidth}x${windowHeight}`);
               }
+            } else {
+              // Absolute last resort - use fixed dimensions if nothing else works
+              setDisplayArea({
+                width: 1920,
+                height: 1080,
+                offsetX: 0,
+                offsetY: 0,
+                containerWidth: 1920,
+                containerHeight: 1080,
+                isFallback: true
+              });
+              
+              setSvgViewBox('0 0 100 100');
+              logger.info(MODULE, `Applied fixed fallback dimensions: 1920x1080`);
             }
           }
         }, 1000);
@@ -429,7 +555,7 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
   }
   
   // Show warning if dimensions aren't set but we have hotspots
-  if ((hotspots?.length > 0) && (!displayArea.width || !displayArea.height)) {
+  if ((hotspots?.length > 0) && (!displayArea.width || !displayArea.height) && !dimensionsSetRef.current) {
     logger.warn(MODULE, 'Display area dimensions not set, but attempting to render hotspots anyway');
   }
   

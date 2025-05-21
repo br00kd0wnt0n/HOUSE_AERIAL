@@ -1,5 +1,6 @@
 ---
 description: Project conventions
+globs: 
 alwaysApply: true
 ---
 
@@ -44,3 +45,12 @@ alwaysApply: true
 - **CSS**: Tailwind utility classes with shadcn/ui components
 - **Code Organization**: Clear separation of concerns, utility functions in `src/utils/`
 - **Class Naming**: `cn()` utility for Tailwind class merging in `src/lib/utils.js` 
+
+
+**RULE #1: DO NOT DO EVERYTHING AT ONCE. JUST ONE TASK AT A TIME.**
+
+**RULE #2: THE HUMAN WILL REVIEW EACH STEP. I WILL ONLY PROCEED TO THE NEXT STEP ONCE HUMAN HAS TESTED, REVIEWED AND APPROVED THE CODE.**
+
+**RULE #3: DO NOT REUSE ANY FILES FROM THE OLD EXPERIENCE. CREATE ALL NEW FILES IN A DEDICATED FOLDER.**
+
+**RULE #4: USE BEST SOFTWARE ENGINEERING PRACTICES FOR SPLITTING FILES WITH BEST SYSTEM PATTERNS TO DO SO, FILES SHOULD NOT BE LONGER THAN 500 LINES AND CODE SHOULD NEVER BE REPEATED.**

@@ -4,8 +4,8 @@ import { useExperience } from '../context/ExperienceContext';
 import VideoPlayer from '../components/VideoPlayer/VideoPlayer';
 import HotspotOverlay from '../components/Hotspot/HotspotOverlay';
 import InfoPanel from '../components/Hotspot/InfoPanel';
-import LoadingScreen from '../components/LoadingScreen/LoadingScreen';
 import VideoStateManager from '../utils/VideoStateManager';
+import LocationNavigation from '../components/Experience/LocationNavigation';
 import logger from '../utils/logger';
 import dataLayer from '../utils/dataLayer';
 
@@ -13,6 +13,7 @@ import dataLayer from '../utils/dataLayer';
  * Experience.jsx - Main experience view for a selected location
  * Handles displaying videos, hotspots, and transitions with offline capability
  * Phase 2: Adds interactive hotspot playlist playback and secondary hotspot modals
+ * Phase 3: Adds multi-location navigation support
  */
 const Experience = () => {
   // Module name for logging
@@ -25,18 +26,17 @@ const Experience = () => {
   // Access the experience context
   const { 
     locations,
-    isLoading: globalLoading, 
     serviceWorkerReady,
     videoPreloaderRef
   } = useExperience();
   
   // Local state
   const [currentVideo, setCurrentVideo] = useState('aerial');
-  const [isVideoLoading, setIsVideoLoading] = useState(true);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false); // New state to track actual playback
   const [currentLocation, setCurrentLocation] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [, setUsesServiceWorker] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false); // Start paused to avoid autoplay issues
+  const [isPlaying, setIsPlaying] = useState(true); // Start with playing set to true for autoplay
   const [hotspots, setHotspots] = useState([]);
   const [inPlaylistMode, setInPlaylistMode] = useState(false);
   // eslint-disable-next-line no-unused-vars
@@ -47,6 +47,11 @@ const Experience = () => {
   // Debug mode state
   const [debugMode, setDebugMode] = useState(false);
   
+  // Location transition state
+  const [inLocationTransition, setInLocationTransition] = useState(false);
+  const [, setDestinationLocation] = useState(null); // Only using setter
+  const [, setTransitionComplete] = useState(false); // Only using setter
+  
   // Reference to the video element
   const videoRef = useRef(null);
   
@@ -56,6 +61,15 @@ const Experience = () => {
   
   // Video state manager ref
   const videoStateManagerRef = useRef(null);
+  
+  // Import VIDEO_STATES for state comparisons
+  const VIDEO_STATES = {
+    AERIAL: 'aerial',
+    DIVE_IN: 'diveIn',
+    FLOOR_LEVEL: 'floorLevel',
+    ZOOM_OUT: 'zoomOut',
+    LOCATION_TRANSITION: 'locationTransition'
+  };
   
   // Initialize the video state manager
   useEffect(() => {
@@ -117,6 +131,66 @@ const Experience = () => {
         }
       }
       
+      // Special case for location-specific aerial after transition
+      if (video.type === 'aerial' && video.locationId && video.locationId !== locationId) {
+        logger.info(MODULE, `Loading aerial video for new location: ${video.locationId}`);
+        
+        // Look for cached aerial video for the new location
+        const newLocationAerialIds = [
+          `aerial_${video.locationId}_api`,
+          `aerial_${video.locationId}_direct`,
+          `aerial_${video.locationId}`,
+        ];
+        
+        // Try each ID pattern for the new location
+        let newLocationUrl = null;
+        
+        for (const id of newLocationAerialIds) {
+          if (videoPreloaderRef.current) {
+            const url = videoPreloaderRef.current.getVideoUrl(id);
+            if (url) {
+              logger.info(MODULE, `Found aerial URL for new location: ${id}`);
+              newLocationUrl = url;
+              break;
+            }
+          }
+        }
+        
+        if (newLocationUrl) {
+          logger.info(MODULE, `Setting aerial URL for new location: ${newLocationUrl.substring(0, 50)}...`);
+          setVideoUrl(newLocationUrl);
+          return;
+        } else {
+          // If not found in cache, try to get it from the API
+          logger.info(MODULE, `Fetching aerial asset from API for location: ${video.locationId}`);
+          
+          void dataLayer.getAssetsByType('AERIAL', video.locationId)
+            .then(assets => {
+              if (assets && assets.length > 0 && assets[0].accessUrl) {
+                logger.info(MODULE, `Found aerial asset for new location: ${assets[0].name}`);
+                setVideoUrl(assets[0].accessUrl);
+              } else {
+                logger.warn(MODULE, 'No aerial assets found for new location, using fallback');
+                // Try generic aerial asset as fallback
+                dataLayer.getAssetsByType('AERIAL')
+                  .then(allAssets => {
+                    if (allAssets && allAssets.length > 0) {
+                      setVideoUrl(allAssets[0].accessUrl);
+                    }
+                  })
+                  .catch(err => {
+                    logger.error(MODULE, 'Error loading fallback aerial asset:', err);
+                  });
+              }
+            })
+            .catch(err => {
+              logger.error(MODULE, 'Error loading aerial asset for new location:', err);
+            });
+          
+          return;
+        }
+      }
+      
       // Normal case - get the video URL from the preloader if available
       let url = null;
       
@@ -158,8 +232,27 @@ const Experience = () => {
   // Handle user interaction to enable autoplay
   useEffect(() => {
     const handleUserInteraction = () => {
+      // User has interacted, ensure playing is set to true
       setIsPlaying(true);
-      // Remove listener after first interaction
+      
+      // If video is paused, try to play it
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(err => {
+          // If autoplay fails despite user interaction, log the error
+          logger.error(MODULE, 'Error playing video after user interaction:', err);
+          
+          // If it's a NotAllowedError, force muted playback
+          if (err.name === 'NotAllowedError') {
+            logger.info(MODULE, 'Forcing muted playback after user interaction');
+            videoRef.current.muted = true;
+            videoRef.current.play().catch(mutedErr => {
+              logger.error(MODULE, 'Error playing muted video after user interaction:', mutedErr);
+            });
+          }
+        });
+      }
+      
+      // Remove listeners after successful interaction
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
     };
@@ -256,7 +349,6 @@ const Experience = () => {
                 
                 // Preload this asset
                 await preloadVideoAsset(fullUrl, `aerial_${locationId}_direct`);
-                setIsVideoLoading(false);
                 assetLoadedRef.current = true;
                 return; // Exit early since we found a match
               }
@@ -286,7 +378,6 @@ const Experience = () => {
                 
                 // Preload this asset
                 await preloadVideoAsset(fullUrl, `aerial_${locationId}_api`);
-                setIsVideoLoading(false);
                 assetLoadedRef.current = true;
                 return; // Exit early with success
               }
@@ -316,7 +407,6 @@ const Experience = () => {
             
             // Preload fallback asset
             await preloadVideoAsset(fullUrl, `aerial_fallback`);
-            setIsVideoLoading(false);
             assetLoadedRef.current = true;
           }
         } else {
@@ -392,18 +482,37 @@ const Experience = () => {
     getAerialAsset();
   }, [locationId, serviceWorkerReady, videoPreloaderRef]);
   
-  // Find current location from locations list
+  // Find current location from locations list and update when locationId changes
   useEffect(() => {
-    if (locations && locations.length > 0 && locationId) {
+    if (!locationId) return;
+    
+    if (locations && locations.length > 0) {
       const location = locations.find(loc => loc._id === locationId);
       if (location) {
         logger.info(MODULE, `Setting current location: ${location.name} (${location._id})`);
         setCurrentLocation(location);
+        
+        // If we're in a location transition, complete it
+        if (inLocationTransition && videoStateManagerRef.current) {
+          logger.info(MODULE, `Location ID changed during transition, completing transition to ${location.name}`);
+          videoStateManagerRef.current.completeLocationTransition();
+          
+          // Load the new location's aerial video
+          if (videoStateManagerRef.current.getCurrentState() === VIDEO_STATES.AERIAL) {
+            logger.info(MODULE, 'Loading aerial video for new location after transition');
+            
+            // Reset any previous hotspot activity
+            videoStateManagerRef.current.resetPlaylist();
+            setActiveHotspot(null);
+            setActivePrimaryHotspot(null);
+            setActiveSecondaryHotspot(null);
+          }
+        }
       } else {
         logger.warn(MODULE, `Location not found: ${locationId}`);
       }
     }
-  }, [locations, locationId]);
+  }, [locations, locationId, inLocationTransition, videoStateManagerRef, VIDEO_STATES.AERIAL]);
   
   // Reset aerial video state when returning from a PRIMARY hotspot sequence
   useEffect(() => {
@@ -438,6 +547,44 @@ const Experience = () => {
     // Check and update the playlist mode state
     setInPlaylistMode(videoStateManagerRef.current.isInPlaylistMode());
     
+    // Check and update location transition state
+    const isInTransitionNow = videoStateManagerRef.current.isInLocationTransition();
+    setInLocationTransition(isInTransitionNow);
+    
+    // Get destination location from state manager during transition
+    if (isInTransitionNow) {
+      const destLoc = videoStateManagerRef.current.getDestinationLocation();
+      if (destLoc && destLoc._id) {
+        logger.info(MODULE, `Current transition destination: ${destLoc.name} (${destLoc._id})`);
+        setDestinationLocation(destLoc);
+        
+        // If URL doesn't match destination, update it (happens if transition ends early)
+        if (destLoc._id !== locationId && currentVideo === 'aerial') {
+          logger.info(MODULE, `Updating URL to match destination: ${destLoc._id}`);
+          navigate(`/experience/${destLoc._id}`);
+        }
+      }
+    } else if (!isInTransitionNow && inLocationTransition) {
+      // Transition just ended
+      const destLoc = videoStateManagerRef.current.getDestinationLocation();
+      if (destLoc && destLoc._id) {
+        logger.info(MODULE, `Transition completed to: ${destLoc.name} (${destLoc._id})`);
+        
+        // If URL doesn't match destination, update it
+        if (destLoc._id !== locationId) {
+          logger.info(MODULE, `Updating URL to match destination after transition: ${destLoc._id}`);
+          navigate(`/experience/${destLoc._id}`);
+        }
+      }
+      
+      setTransitionComplete(true);
+      
+      // Reset transition complete flag after a short delay
+      setTimeout(() => {
+        setTransitionComplete(false);
+      }, 100);
+    }
+    
     // Check and update the active hotspot
     const hotspot = videoStateManagerRef.current.getCurrentHotspot();
     if (hotspot) {
@@ -451,17 +598,43 @@ const Experience = () => {
         setActiveHotspot(null);
       }
     }
-  }, [currentVideo, inPlaylistMode]);
+  }, [currentVideo, inPlaylistMode, inLocationTransition, locationId, navigate]);
   
   // Handle video end event
   const handleVideoEnded = useCallback((videoType) => {
     logger.debug(MODULE, `Video ended: ${videoType}`);
     
-    // Detect zoom-out videos
-    const isZoomOut = videoType.startsWith('zoomOut');
+    // Check if this is a location transition video
+    const isLocationTransition = videoType.startsWith('locationTransition') || 
+                               videoType === 'locationTransition';
     
     // Pass control to the video state manager
     if (videoStateManagerRef.current) {
+      // If this is a location transition video, handle special location navigation
+      if (isLocationTransition && videoStateManagerRef.current.isInLocationTransition()) {
+        logger.info(MODULE, 'Location transition video ended');
+        
+        // Get destination location ID before completing transition
+        const destinationLoc = videoStateManagerRef.current.getDestinationLocation();
+        const destLocationId = destinationLoc?._id;
+        
+        // Tell the state manager the video has ended
+        videoStateManagerRef.current.handleVideoEnded(videoType);
+        
+        // If we have a valid destination ID, navigate to it
+        if (destLocationId && destLocationId !== locationId) {
+          logger.info(MODULE, `Navigating to new location: ${destinationLoc.name}`);
+          
+          // Navigate programmatically to change the URL
+          navigate(`/experience/${destLocationId}`);
+        }
+        
+        return;
+      }
+      
+      // Detect zoom-out videos
+      const isZoomOut = videoType.startsWith('zoomOut');
+      
       // If this is a zoom-out video, ensure we properly transition back to aerial
       if (isZoomOut) {
         logger.info(MODULE, 'Zoom-out video ended, ensuring proper transition to aerial');
@@ -537,18 +710,29 @@ const Experience = () => {
         setCurrentVideo('aerial');
       }
     }
-  }, [videoStateManagerRef, locationId, locations, videoPreloaderRef]);
+  }, [videoStateManagerRef, locationId, locations, videoPreloaderRef, navigate]);
   
   // Handle video load start
   const handleVideoLoadStart = useCallback((videoType) => {
     logger.debug(MODULE, `Video load started: ${videoType}`);
-    setIsVideoLoading(true);
+    // Don't set loading status since we're pre-caching
   }, []);
   
   // Handle video load complete
   const handleVideoLoadComplete = useCallback((videoType) => {
     logger.debug(MODULE, `Video load completed: ${videoType}`);
-    setIsVideoLoading(false);
+  }, []);
+  
+  // Add a new handler for actual video playback
+  const handleVideoPlaying = useCallback(() => {
+    logger.debug(MODULE, `Video is now playing`);
+    
+    // Add a significant delay before setting the playing state to true
+    // This gives the video element more time to fully establish its dimensions
+    setTimeout(() => {
+      logger.info(MODULE, 'Delayed video playing state update - now safe to render hotspots');
+      setIsVideoPlaying(true);
+    }, 1000); // 1 second delay
   }, []);
   
   // Handle back to home button click
@@ -673,13 +857,91 @@ const Experience = () => {
     };
   }, []);
   
-  // Show loading screen if global loading is true
-  if (globalLoading) {
-    return <LoadingScreen isComplete={false} text="Loading Experience..." />;
-  }
+  // Handle location button click
+  const handleLocationButtonClick = useCallback(async (destinationLoc) => {
+    logger.info(MODULE, `Location button clicked: ${destinationLoc.name} (${destinationLoc._id})`);
+    
+    // Skip if we're already in a transition or playlist
+    if (inLocationTransition || inPlaylistMode) {
+      logger.warn(MODULE, 'Cannot change location during transition or playlist playback');
+      return;
+    }
+    
+    // Skip if video state manager not initialized
+    if (!videoStateManagerRef.current) {
+      logger.error(MODULE, 'Cannot handle location button click: video state manager not initialized');
+      return;
+    }
+    
+    try {
+      // Get current location info - either from state or look it up using locationId
+      let sourceLoc = currentLocation;
+      
+      // If currentLocation isn't set yet, try to find it from locations array
+      if (!sourceLoc && locations && locations.length > 0 && locationId) {
+        sourceLoc = locations.find(loc => loc._id === locationId);
+        
+        // If we found it, update the currentLocation state
+        if (sourceLoc) {
+          logger.info(MODULE, `Found current location from locations array: ${sourceLoc.name}`);
+          setCurrentLocation(sourceLoc);
+        }
+      }
+      
+      // If we still don't have a source location, create a basic one from locationId
+      if (!sourceLoc && locationId) {
+        logger.warn(MODULE, 'Creating basic source location from locationId');
+        sourceLoc = {
+          _id: locationId,
+          name: 'Current Location'
+        };
+      }
+      
+      // Final check - if no sourceLoc, we really can't proceed
+      if (!sourceLoc) {
+        logger.error(MODULE, 'Cannot change location: current location unknown');
+        return;
+      }
+      
+      // Update destination location state immediately to ensure components have latest data
+      setDestinationLocation(destinationLoc);
+      
+      // Try to find a transition video between these locations
+      const transitionVideo = await dataLayer.getTransitionVideo(
+        sourceLoc._id, 
+        destinationLoc._id
+      );
+      
+      logger.info(MODULE, `Starting transition from ${sourceLoc.name} to ${destinationLoc.name}`);
+      
+      // Start location transition
+      videoStateManagerRef.current.startLocationTransition(
+        sourceLoc,
+        destinationLoc,
+        transitionVideo
+      );
+      
+      // If we don't have a transition video, navigate immediately
+      if (!transitionVideo) {
+        logger.info(MODULE, 'No transition video available, navigating directly');
+        
+        // Only change URL if needed
+        if (destinationLoc._id !== locationId) {
+          // Navigate programmatically to change the URL
+          navigate(`/experience/${destinationLoc._id}`);
+        }
+      }
+    } catch (error) {
+      logger.error(MODULE, `Error handling location transition: ${error.message}`);
+    }
+  }, [currentLocation, locations, locationId, inLocationTransition, inPlaylistMode, videoStateManagerRef, navigate]);
   
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden">
+    <div className="relative w-screen h-screen overflow-hidden" style={{ 
+      background: currentVideo === 'aerial' && !inPlaylistMode
+        ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))'
+        : 'black'
+    }}>
       {/* Main video player */}
       <VideoPlayer 
         src={videoUrl}
@@ -687,17 +949,20 @@ const Experience = () => {
         onEnded={handleVideoEnded}
         onLoadStart={handleVideoLoadStart}
         onLoadComplete={handleVideoLoadComplete}
+        onPlaying={handleVideoPlaying}
         isPlaying={isPlaying}
         onVideoRef={handleVideoRef}
+        key={`video-player-${videoUrl}`}
       />
       
-      {/* Hotspot overlay - only shown for aerial video when not loading */}
-      {currentVideo === 'aerial' && !isVideoLoading && videoRef.current && (
+      {/* Hotspot overlay - only shown for aerial video when playing */}
+      {currentVideo === 'aerial' && isVideoPlaying && videoRef.current && (
         <HotspotOverlay 
           hotspots={hotspots}
           onHotspotClick={handleHotspotClick}
           videoRef={videoRef}
           debugMode={debugMode}
+          key={`hotspot-overlay-${videoUrl}`}
         />
       )}
       
@@ -709,8 +974,19 @@ const Experience = () => {
         />
       )}
       
-      {/* Play button overlay if not playing */}
-      {!isPlaying && videoUrl && !isVideoLoading && (
+      {/* Location navigation buttons - only show during aerial view */}
+      {currentVideo === 'aerial' && !inPlaylistMode && (
+        <LocationNavigation 
+          locations={locations}
+          currentLocationId={locationId}
+          onClick={handleLocationButtonClick}
+          debugMode={debugMode}
+          key={`location-nav-${locationId}`}
+        />
+      )}
+      
+      {/* Play button overlay if autoplay fails - show only if not playing and not loading */}
+      {!isPlaying && videoUrl && (
         <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/40">
           <button 
             className="w-24 h-24 bg-netflix-red rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors"
@@ -721,11 +997,12 @@ const Experience = () => {
         </div>
       )}
       
-      {/* UI Controls - Only show Back button in normal mode */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-4">
-        {/* Back button - always shown */}
+      {/* UI Controls - Back to Home button with fixed positioning */}
+      <div 
+        className="fixed top-4 right-4 z-30"
+      >
         <button 
-          className="px-4 py-2 bg-netflix-red text-white rounded hover:bg-netflix-red/80 transition-colors"
+          className="px-6 py-3 bg-netflix-red text-white rounded-lg hover:bg-netflix-red/80 transition-colors text-lg font-medium"
           onClick={handleBackToHome}
         >
           Back to Home
@@ -745,16 +1022,6 @@ const Experience = () => {
             </div>
           )}
         </>
-      )}
-      
-      {/* Loading indicator overlay */}
-      {isVideoLoading && (
-        <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-20 pointer-events-none">
-          <div className="bg-black/80 p-6 rounded-lg">
-            <div className="w-12 h-12 border-4 border-netflix-red border-t-transparent rounded-full animate-spin mb-4 mx-auto"></div>
-            <p className="text-white text-center">Loading video...</p>
-          </div>
-        </div>
       )}
     </div>
   );
