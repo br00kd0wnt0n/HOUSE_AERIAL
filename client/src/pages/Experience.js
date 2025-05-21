@@ -12,6 +12,23 @@ import api, { baseBackendUrl } from '../utils/api';
 import { cn } from '../lib/utils';
 import '../styles/Experience.css';
 
+// Add a custom hook for debounced state updates
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  
+  return debouncedValue;
+};
+
 const Experience = () => {
   const { locationId } = useParams();
   const navigate = useNavigate();
@@ -72,6 +89,44 @@ const Experience = () => {
     setLoadingProgress(progress);
     updateLoadingProgress(loaded, total);
   }));
+
+  // Add state to control when we're ready to display videos
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  
+
+  
+  // Debounce the current video to prevent rapid switches
+  const debouncedVideo = useDebounce(currentVideo, 300);
+  
+  // Helper function to check if we're in a playlist sequence
+  const inPlaylistMode = useCallback(() => {
+    // Check for standard video types
+    if (currentVideo === 'diveIn' || 
+        currentVideo === 'floorLevel' || 
+        currentVideo === 'zoomOut') {
+      return true;
+    }
+    
+    // Check for video types that include hotspot IDs
+    if (typeof currentVideo === 'string') {
+      return currentVideo.startsWith('diveIn_') || 
+             currentVideo.startsWith('floorLevel_') || 
+             currentVideo.startsWith('zoomOut_');
+    }
+    
+    return false;
+  }, [currentVideo]);
+  
+  // Debounce loading state changes to prevent flickering
+  const controlledIsLoading = useCallback((loading) => {
+    // If we're in a playlist or transition, don't show loading
+    if (currentVideo === 'transition' || 
+        currentVideo?.includes('transition') || 
+        inPlaylistMode()) {
+      return false;
+    }
+    return loading;
+  }, [currentVideo, inPlaylistMode]);
 
   // Handle receiving the video reference from VideoPlayer
   const handleVideoRef = useCallback((videoElement) => {
@@ -277,6 +332,83 @@ const Experience = () => {
     console.log('Finished preload process for hotspot videos');
   }, [loadPlaylistForHotspot, aerialVideo, transitionVideo]);
   
+  // Add state to track if transition videos are already preloaded
+  const [transitionsPreloaded, setTransitionsPreloaded] = useState(false);
+  const transitionPreloadedRef = useRef(false);
+  
+  // Function to preload transition videos for all locations
+  const preloadTransitionVideos = useCallback(async () => {
+    // Skip if already preloaded
+    if (transitionsPreloaded || transitionPreloadedRef.current) {
+      return;
+    }
+    
+    try {
+      // Get all transition videos from API
+      const transitionResponse = await api.getAssetsByType('Transition');
+      
+      if (!isMountedRef.current) return;
+      
+      if (transitionResponse.data && transitionResponse.data.length > 0) {
+        console.log(`Preloading ${transitionResponse.data.length} transition videos`);
+        
+        // Get the loader from ref
+        const loader = videoLoader.current;
+        
+        // Add all transition videos to loader - with proper URL formatting
+        for (const transitionAsset of transitionResponse.data) {
+          if (transitionAsset.accessUrl) {
+            // Make sure to use a fully qualified URL with baseBackendUrl
+            const fullUrl = transitionAsset.accessUrl.startsWith('http') ? 
+              transitionAsset.accessUrl : 
+              `${baseBackendUrl}${transitionAsset.accessUrl.startsWith('/api/') ? '' : '/api'}${
+                transitionAsset.accessUrl.startsWith('/') ? transitionAsset.accessUrl : `/${transitionAsset.accessUrl}`
+              }`;
+              
+              // Track each transition by a unique key (video ID or name)
+              const videoKey = `transition_${transitionAsset._id || transitionAsset.name}`;
+              
+              if (!loader.isLoaded(videoKey)) {
+                console.log(`Adding transition video to preload queue: ${videoKey}`);
+                loader.add(videoKey, fullUrl);
+              }
+          }
+        }
+        
+        // Start preloading in background - don't await to prevent UI blocking
+        console.log('Starting transition videos preload...');
+        
+        // Use a timeout to limit how long we wait for transitions to preload
+        const preloadPromise = loader.preloadAll();
+        const timeoutPromise = new Promise(resolve => {
+          setTimeout(() => {
+            console.log('Transition preload timeout reached, continuing anyway');
+            resolve(null);
+          }, 10000); // 10-second timeout for transition preloading
+        });
+        
+        // Use whichever finishes first
+        await Promise.race([preloadPromise, timeoutPromise]);
+        
+        console.log('Successfully preloaded transition videos');
+        setTransitionsPreloaded(true);
+        transitionPreloadedRef.current = true;
+      }
+    } catch (error) {
+      console.error('Error fetching transition videos for preloading:', error);
+      // Consider them preloaded to avoid repeated attempts
+      setTransitionsPreloaded(true);
+      transitionPreloadedRef.current = true;
+    }
+  }, [transitionsPreloaded]);
+  
+  // Preload transition videos once locations are loaded
+  useEffect(() => {
+    if (locations.length > 0 && !transitionsPreloaded && !transitionPreloadedRef.current) {
+      preloadTransitionVideos();
+    }
+  }, [locations, transitionsPreloaded, preloadTransitionVideos]);
+  
   // Set current location based on URL param
   useEffect(() => {
     if (!locations.length) return;
@@ -304,7 +436,7 @@ const Experience = () => {
         button: false
       };
     } else if (locations.length > 0) {
-      navigate(`/experience/${locations[0]._id}`);
+      navigate(`/v0/experience/${locations[0]._id}`);
     }
   }, [locationId, locations, setCurrentLocation, navigate]);
   
@@ -517,20 +649,36 @@ const Experience = () => {
           setLocationButtons(buttonsMap);
         }
         
-        // Preload all video assets
+        // Preload all video assets with better error handling
         const loader = videoLoader.current;
+        
+        // Cancel any existing load operations before starting new ones
         loader.clear();
         
-        // Add aerial video to loader if not already loaded
-        if (aerialVideo && !loader.isLoaded('aerial')) {
-          console.log('Adding aerial video to loader:', aerialVideo.accessUrl);
-          loader.add('aerial', aerialVideo.accessUrl);
+        // Add aerial video to loader if not already loaded - ensure proper URL formatting
+        if (aerialVideo && !loader.isLoaded('aerial') && aerialVideo.accessUrl) {
+          // Make sure we have an absolute URL
+          const fullUrl = aerialVideo.accessUrl.startsWith('http') ?
+            aerialVideo.accessUrl :
+            `${baseBackendUrl}${aerialVideo.accessUrl.startsWith('/api/') ? '' : '/api'}${
+              aerialVideo.accessUrl.startsWith('/') ? aerialVideo.accessUrl : `/${aerialVideo.accessUrl}`
+            }`;
+            
+          console.log('Adding aerial video to loader:', fullUrl);
+          loader.add('aerial', fullUrl);
         }
         
-        // Add transition video to loader if not already loaded
-        if (transitionVideo && !loader.isLoaded('transition')) {
-          console.log('Adding transition video to loader:', transitionVideo.accessUrl);
-          loader.add('transition', transitionVideo.accessUrl);
+        // Add transition video to loader if not already loaded - ensure proper URL formatting
+        if (transitionVideo && !loader.isLoaded('transition') && transitionVideo.accessUrl) {
+          // Make sure we have an absolute URL
+          const fullUrl = transitionVideo.accessUrl.startsWith('http') ?
+            transitionVideo.accessUrl :
+            `${baseBackendUrl}${transitionVideo.accessUrl.startsWith('/api/') ? '' : '/api'}${
+              transitionVideo.accessUrl.startsWith('/') ? transitionVideo.accessUrl : `/${transitionVideo.accessUrl}`
+            }`;
+            
+          console.log('Adding transition video to loader:', fullUrl);
+          loader.add('transition', fullUrl);
         }
         
         // Add playlist videos to loader (for primary hotspots) - but only if we have hotspots
@@ -549,7 +697,6 @@ const Experience = () => {
         // Process each chunk sequentially
         for (const hotspotChunk of chunks) {
           // Use the stable callback function to handle playlist loading
-          // This avoids the ESLint no-loop-func warning
           await Promise.all(
             hotspotChunk.map(hotspot => loadPlaylistForHotspot(hotspot))
           );
@@ -564,7 +711,7 @@ const Experience = () => {
           setTimeout(() => {
             console.warn('Video preloading timed out, continuing anyway');
             resolve();
-          }, 30000); // 30 second timeout
+          }, 20000); // 20 second timeout - reduced from 30 seconds
         });
         
         await Promise.race([preloadPromise, timeoutPromise]);
@@ -606,10 +753,18 @@ const Experience = () => {
   }, [locationId, contextLoading, aerialVideo, transitionVideo, hotspots, 
       currentVideo, setCurrentVideo, retryCount, maxRetries, loadPlaylistForHotspot]);
   
-  // Handle location change
+  // Add a transition lock to prevent multiple transitions from happening simultaneously
+  const transitionInProgressRef = useRef(false);
+  // Add a transition navigation ref to track if we've already navigated
+  const transitionNavigatedRef = useRef(false);
+  
+  // Handle location change with improved stability
   const handleLocationChange = (newLocationId) => {
-    // Don't do anything if we're already on the transition video
-    if (currentVideo === 'transition') return;
+    // Don't do anything if we're already on the transition video or a transition is in progress
+    if (currentVideo === 'transition' || transitionInProgressRef.current) {
+      console.log('Transition already in progress, ignoring location change request');
+      return;
+    }
     
     // Verify we're changing to a different location
     if (locationId === newLocationId) {
@@ -617,51 +772,144 @@ const Experience = () => {
       return;
     }
 
+    // Set transition lock
+    transitionInProgressRef.current = true;
+    // Reset navigation flag
+    transitionNavigatedRef.current = false;
+
+    // IMPORTANT: Force set loading to false before transition to prevent loaders
+    setIsLoading(false);
+
     // Log debug info about current state before transition
     console.log(`Starting location change from ${locationId} to ${newLocationId}`);
     console.log(`Current aerial video:`, aerialVideo?.name, aerialVideo?._id, aerialVideo?.locationId || 'unknown');
     
-    // Play transition video first
-    console.log(`Setting video to transition before navigating to: ${newLocationId}`);
-    setCurrentVideo('transition');
-    
-    // Store a reference to the video element
-    const transitionVideoElement = directVideoRef;
-    
-    if (transitionVideoElement) {
-      // Add a one-time event listener for the transition video's 'ended' event
-      const handleTransitionEnd = () => {
-        console.log(`Transition video ended, navigating to new location: ${newLocationId}`);
-        
-        // Force clear some state refs to ensure clean transition
-        videoLoader.current.clear();
-        
-        // Navigate only when the transition video has finished playing
-        navigate(`/experience/${newLocationId}`);
-        
-        // Clean up the event listener
-        transitionVideoElement.removeEventListener('ended', handleTransitionEnd);
-      };
-      
-      transitionVideoElement.addEventListener('ended', handleTransitionEnd);
+    // Ensure transition videos are preloaded before changing location
+    if (!transitionsPreloaded && !transitionPreloadedRef.current) {
+      console.log('Preloading transition videos before location change');
+      // Allow a short time for videos to preload but don't block the UI
+      preloadTransitionVideos()
+        .then(() => continueWithTransition())
+        .catch(() => continueWithTransition());
     } else {
-      // Fallback if we can't get the video element for some reason
-      console.warn('No video reference available, using fallback timeout');
-      // Use a longer timeout to ensure transition video has a chance to play
+      // Small delay before transition to stabilize
+      setTimeout(continueWithTransition, 100);
+    }
+    
+    // Continue with the transition after preloading
+    function continueWithTransition() {
+      // Play transition video first
+      console.log(`Setting video to transition before navigating to: ${newLocationId}`);
+      
+      // Put a small delay between state updates to avoid React batching them
+      // This ensures the transition video actually shows
       setTimeout(() => {
-        console.log(`Timeout ended, navigating to new location: ${newLocationId}`);
+        setCurrentVideo('transition');
         
-        // Force clear some state refs to ensure clean transition
-        videoLoader.current.clear();
+        // Store a reference to the video element
+        const transitionVideoElement = directVideoRef;
         
-        navigate(`/experience/${newLocationId}`);
-      }, 3000); // Use 3 seconds as a safe fallback
+        if (transitionVideoElement) {
+          // Add a one-time event listener for the transition video's 'ended' event
+          const handleTransitionEnd = () => {
+            // Skip if we've already navigated
+            if (transitionNavigatedRef.current) {
+              return;
+            }
+            
+            console.log(`Transition video ended naturally, navigating to new location: ${newLocationId}`);
+            
+            // Mark that we've navigated from this event handler
+            transitionNavigatedRef.current = true;
+            
+            // Force clear ONLY non-transition videos to ensure clean transition
+            videoLoader.current.clearNonTransitionVideos();
+            
+            // Force loading to false to prevent loader during navigation
+            setIsLoading(false);
+            
+            // Navigate only when the transition video has finished playing
+            navigate(`/v0/experience/${newLocationId}`);
+            
+            // Release transition lock
+            transitionInProgressRef.current = false;
+            
+            // Clean up the event listener
+            transitionVideoElement.removeEventListener('ended', handleTransitionEnd);
+          };
+          
+          transitionVideoElement.addEventListener('ended', handleTransitionEnd);
+          
+          // Add a safety timeout in case the ended event doesn't fire
+          // But with a much longer delay and only for backup
+          setTimeout(() => {
+            // Only navigate if not already navigated and transition is still in progress
+            if (transitionInProgressRef.current && !transitionNavigatedRef.current) {
+              console.log(`Safety timeout reached, navigating to new location: ${newLocationId}`);
+              
+              // Mark that we've navigated from the safety timeout
+              transitionNavigatedRef.current = true;
+              
+              // Force clear ONLY non-transition videos to ensure clean transition
+              videoLoader.current.clearNonTransitionVideos();
+              
+              // Force loading to false to prevent loader during navigation
+              setIsLoading(false);
+              
+              navigate(`/v0/experience/${newLocationId}`);
+              
+              // Release transition lock
+              transitionInProgressRef.current = false;
+              
+              // Clean up the event listener in case it's still attached
+              transitionVideoElement.removeEventListener('ended', handleTransitionEnd);
+            }
+          }, 8000); // 8 seconds is a much safer timeout - most transition videos are 3-5 seconds
+        } else {
+          // Fallback if we can't get the video element for some reason
+          console.warn('No video reference available, using fallback timeout');
+          
+          // Use a longer timeout to ensure transition video has a chance to play
+          setTimeout(() => {
+            // Only navigate if not already navigated and transition is still in progress
+            if (transitionInProgressRef.current && !transitionNavigatedRef.current) {
+              console.log(`Fallback timeout ended, navigating to new location: ${newLocationId}`);
+              
+              // Mark that we've navigated from the fallback
+              transitionNavigatedRef.current = true;
+              
+              // Force clear ONLY non-transition videos to ensure clean transition
+              videoLoader.current.clearNonTransitionVideos();
+              
+              // Force loading to false to prevent loader during navigation
+              setIsLoading(false);
+              
+              navigate(`/v0/experience/${newLocationId}`);
+              
+              // Release transition lock
+              transitionInProgressRef.current = false;
+            }
+          }, 5000); // Use 5 seconds as a safe fallback
+        }
+      }, 100); // Small delay to separate state updates
     }
   };
   
-  // Only render VideoPlayer when we have the necessary assets
+  // Mark video ready a bit after we have aerialVideo ready
+  useEffect(() => {
+    if (aerialVideo && !isVideoReady) {
+      // Wait a bit to ensure everything is loaded before showing
+      const timer = setTimeout(() => {
+        setIsVideoReady(true);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [aerialVideo, isVideoReady]);
+  
+  // Only render VideoPlayer when we're ready and have the necessary assets
   // Use aerialVideo directly from context instead of videoAssets.aerial
-  if (!aerialVideo) {
+  if (!aerialVideo || !isVideoReady) {
     console.log('No aerial video available yet, showing loading spinner');
     return <LoadingSpinner />;
   }
@@ -722,22 +970,25 @@ const Experience = () => {
       "text-white",
       currentVideo === 'aerial' ? "bg-[#def2f4]" : "bg-black"
     )}>
-      {/* Only show loading spinner during initial load, not during sequences */}
-      {isLoading && !activeHotspot && !inPlaylistMode() && (
+      {/* Only show loading spinner during initial load, not during sequences or transitions */}
+      {controlledIsLoading(isLoading) && !activeHotspot && (
         <LoadingSpinner 
           progress={loadingProgress} 
           message={loadingFailed ? `Loading failed. Showing available content.` : 
                    retryCount > 0 ? `Retrying... (${retryCount}/${maxRetries})` : 'Loading...'}
         />
       )}
-      <VideoPlayer
-        videoAssets={videoAssets}
-        currentVideo={currentVideo}
-        onVideoEnded={handleVideoEnded}
-        activeHotspot={activeHotspot}
-        videoLoader={videoLoader.current}
-        onVideoRef={handleVideoRef} // Pass the callback to receive the video reference
-      />
+      {/* Only mount VideoPlayer once we have the necessary data */}
+      {videoAssets && debouncedVideo && (
+        <VideoPlayer
+          videoAssets={videoAssets}
+          currentVideo={debouncedVideo}
+          onVideoEnded={handleVideoEnded}
+          activeHotspot={activeHotspot}
+          videoLoader={videoLoader.current}
+          onVideoRef={handleVideoRef} // Pass the callback to receive the video reference
+        />
+      )}
       
       {/* Hotspot overlay (only visible when showing aerial view) */}
       {currentVideo === 'aerial' && !isLoading && (
@@ -766,31 +1017,12 @@ const Experience = () => {
       {/* Return to menu button */}
       <button 
         className="absolute top-5 right-5 bg-black/70 text-white border border-white/40 px-4 py-2 rounded hover:bg-black/90 hover:border-netflix-red transition-all z-20"
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/v0')}
       >
         Back to Menu
       </button>
     </div>
   );
-
-  // Helper function to check if we're in a playlist sequence
-  function inPlaylistMode() {
-    // Check for standard video types
-    if (currentVideo === 'diveIn' || 
-        currentVideo === 'floorLevel' || 
-        currentVideo === 'zoomOut') {
-      return true;
-    }
-    
-    // Check for video types that include hotspot IDs
-    if (typeof currentVideo === 'string') {
-      return currentVideo.startsWith('diveIn_') || 
-             currentVideo.startsWith('floorLevel_') || 
-             currentVideo.startsWith('zoomOut_');
-    }
-    
-    return false;
-  }
 };
 
 export default Experience;

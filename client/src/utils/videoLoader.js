@@ -1,12 +1,10 @@
 // client/src/utils/videoLoader.js - Utility for preloading videos
 import axios from 'axios';
-
-// Base URL without /api/ suffix
-const BASE_URL = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || '';
+import { baseBackendUrl } from './api';
 
 // Create axios instance for video preloading
 const videoAxios = axios.create({
-  baseURL: BASE_URL,
+  baseURL: baseBackendUrl,
   responseType: 'blob',
   timeout: 30000, // 30 seconds
   headers: {
@@ -14,56 +12,68 @@ const videoAxios = axios.create({
   }
 });
 
-// Add request interceptor for logging
-videoAxios.interceptors.request.use(request => {
-  // Process URL to avoid duplicate /api/ prefixes
-  let url = request.url;
+// Helper function to properly format video URLs
+const formatVideoUrl = (url) => {
+  if (!url) return null;
   
-  // If URL is already an absolute URL with http, don't modify it
-  if (url.startsWith('http')) {
-    console.log('VideoLoader making request to absolute URL:', url);
-    console.log('VideoLoader request headers:', request.headers);
-    return request;
+  // Return unchanged if already absolute URL
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
   }
   
-  // Ensure URL starts with /api/ but only once
-  if (!url.startsWith('/api/')) {
-    url = url.startsWith('/') ? `/api${url}` : `/api/${url}`;
+  // Remove any duplicate /api/ prefixes
+  let cleanUrl = url;
+  if (cleanUrl.startsWith('/api/')) {
+    // URL already has /api/ prefix, just append to base URL
+    return `${baseBackendUrl}${cleanUrl}`;
   }
   
-  // Log the URL but DON'T concatenate with BASE_URL here - axios will do that
-  console.log('VideoLoader making request to:', url);
-  console.log('VideoLoader full URL:', BASE_URL + url);
-  console.log('VideoLoader request headers:', request.headers);
+  // Add /api/ prefix to other URLs
+  return cleanUrl.startsWith('/') 
+    ? `${baseBackendUrl}/api${cleanUrl}` 
+    : `${baseBackendUrl}/api/${cleanUrl}`;
+};
+
+// Add request interceptor to log requests
+videoAxios.interceptors.request.use(config => {
+  const isAbsoluteUrl = config.url.startsWith('http');
   
-  // Update the request URL 
-  request.url = url;
-  return request;
+  if (isAbsoluteUrl) {
+    console.log('VideoLoader making request to absolute URL:', config.url);
+  } else {
+    console.log('VideoLoader making request to:', config.url);
+    console.log('VideoLoader full URL:', `${config.baseURL}${config.url}`);
+  }
+  
+  console.log('VideoLoader request headers:', config.headers);
+  return config;
+}, error => {
+  console.error('VideoLoader request error:', error);
+  return Promise.reject(error);
 });
 
-// Add response interceptor for logging
-videoAxios.interceptors.response.use(
-  response => {
+// Add response interceptor to log responses
+videoAxios.interceptors.response.use(response => {
     console.log('VideoLoader response from:', response.config.url, response.status);
     console.log('VideoLoader response headers:', response.headers);
-    console.log('VideoLoader response type:', response.data.type);
-    console.log('VideoLoader response size:', response.data.size);
+  console.log('VideoLoader response type:', response.headers['content-type']);
+  console.log('VideoLoader response size:', response.headers['content-length']);
     return response;
-  },
-  error => {
+}, error => {
+  if (error.response) {
+    console.error('VideoLoader response error:', error.response.status, error.config.url);
+  } else if (error.request) {
     console.error('VideoLoader request failed:', error.config?.url, error.message);
-    if (error.response) {
-      console.error('VideoLoader response status:', error.response.status);
-      console.error('VideoLoader response headers:', error.response.headers);
-      console.error('VideoLoader response data:', error.response.data);
-    } else if (error.request) {
-      console.error('VideoLoader no response received:', error.request);
     } else {
-      console.error('VideoLoader error setting up request:', error.message);
+    console.error('VideoLoader error:', error.message);
     }
-    return Promise.reject(error);
+  
+  if (axios.isCancel(error)) {
+    console.log('VideoLoader request canceled:', error.config?.url);
   }
-);
+  
+  return Promise.reject(error);
+});
 
 // Class for managing video preloading
 class VideoLoader {
@@ -74,334 +84,337 @@ class VideoLoader {
     this.onProgress = onProgress || (() => {});
     this.maxRetries = 3;
     this.retryDelay = 1000; // 1 second
-    this.videoLoadTimeout = 15000; // 15 seconds per video
+    this.videoLoadTimeout = 30000; // Increased to 30 seconds
+    this.cancelTokens = {}; // Track cancel tokens by video key
+    this.loadPromises = {}; // Track active load promises
+    this.completedSequences = {}; // Track completed hotspot sequences
   }
   
-  // Add a video to be preloaded
-  add(key, url) {
-    if (!this.videos[key]) {
-      // Normalize URL to ensure proper format
-      const normalizedUrl = this.normalizeUrl(url);
-      console.log(`Adding video ${key} with URL:`, normalizedUrl);
-      this.videos[key] = {
-        url: normalizedUrl,
-        loaded: false,
-        element: null,
-        blob: null,
-        retryCount: 0,
-        error: null
-      };
-      this.totalCount++;
-    }
-  }
-  
-  // Normalize URL to ensure proper format
-  normalizeUrl(url) {
-    if (!url) return '';
-    
-    // If already an absolute URL, return as is
-    if (url.startsWith('http')) return url;
-    
-    // For consistency, ensure all URLs start with /api/
-    if (!url.startsWith('/api/')) {
-      url = url.startsWith('/') ? `/api${url}` : `/api/${url}`;
-    }
-    
-    // For direct axios requests, we don't need to append the BASE_URL here
-    // as axios will do that automatically
-    return url;
-  }
-  
-  // Load a single video with retry logic
-  async loadVideo(key, video) {
-    try {
-      console.log(`Loading video ${key}:`, video.url);
-      
-      // Add a timeout for the request
-      const timeoutId = setTimeout(() => {
-        console.warn(`Video ${key} loading timed out after ${this.videoLoadTimeout}ms`);
-        // Force abort the axios request if possible
-        if (controller) {
-          controller.abort();
-        }
-      }, this.videoLoadTimeout);
-      
-      // Use AbortController to cancel request if needed
-      const controller = new AbortController();
-      
-      try {
-        const response = await videoAxios.get(video.url, {
-          signal: controller.signal
-        });
-        
-        // Clear the timeout since we got a response
-        clearTimeout(timeoutId);
-        
-        const blob = response.data;
-        const blobUrl = URL.createObjectURL(blob);
-        
-        // Create video element
-        const element = document.createElement('video');
-        element.preload = 'auto';
-        
-        // Add another timeout for the actual video loading
-        const videoLoadTimeoutId = setTimeout(() => {
-          console.warn(`Video ${key} metadata loading timed out after ${this.videoLoadTimeout}ms`);
-          
-          // Clean up blob URL
-          URL.revokeObjectURL(blobUrl);
-          
-          // Mark as loaded but with error to prevent infinite loading
-          video.loaded = true;
-          video.error = new Error("Video metadata loading timeout");
-          this.loadedCount++;
-          
-          // Call progress callback
-          this.onProgress(this.loadedCount, this.totalCount);
-          
-        }, this.videoLoadTimeout);
-        
-        // Set up event listeners
-        element.addEventListener('loadeddata', () => {
-          // Clear the timeout since the video loaded successfully
-          clearTimeout(videoLoadTimeoutId);
-          
-          video.loaded = true;
-          video.blob = blob;
-          video.error = null;
-          this.loadedCount++;
-          
-          // Call progress callback
-          this.onProgress(this.loadedCount, this.totalCount);
-        });
-        
-        element.addEventListener('error', async (error) => {
-          // Clear the timeout to prevent double counting
-          clearTimeout(videoLoadTimeoutId);
-          
-          console.error(`Error loading video ${key}:`, error);
-          console.error(`Failed URL:`, video.url);
-          
-          // Clean up blob URL
-          URL.revokeObjectURL(blobUrl);
-          
-          // Retry if we haven't exceeded max retries
-          if (video.retryCount < this.maxRetries) {
-            video.retryCount++;
-            console.log(`Retrying video ${key} (attempt ${video.retryCount}/${this.maxRetries})...`);
-            
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-            
-            // Retry loading the video
-            await this.loadVideo(key, video);
-          } else {
-            video.error = error;
-            video.loaded = true; // Mark as "loaded" even though it failed
-            this.loadedCount++;
-            this.onProgress(this.loadedCount, this.totalCount);
-          }
-        });
-        
-        // Start loading
-        element.src = blobUrl;
-        element.load();
-        
-        video.element = element;
-      } catch (error) {
-        // Clear the timeout to prevent double counting
-        clearTimeout(timeoutId);
-        
-        // Handle abort errors specially
-        if (error.name === 'AbortError') {
-          console.warn(`Video ${key} loading was aborted due to timeout`);
-          throw new Error('Video loading timeout');
-        } else {
-          throw error;
-        }
+  // Clear all videos and reset state
+  clear() {
+    // Cancel any pending requests
+    Object.keys(this.cancelTokens).forEach(key => {
+      if (this.cancelTokens[key]) {
+        this.cancelTokens[key].cancel(`Request for ${key} canceled due to loader clear`);
+        delete this.cancelTokens[key];
       }
-    } catch (error) {
-      console.error(`Error preloading video ${key}:`, error);
-      console.error(`Failed URL:`, video.url);
-      
-      // Retry if we haven't exceeded max retries
-      if (video.retryCount < this.maxRetries) {
-        video.retryCount++;
-        console.log(`Retrying video ${key} (attempt ${video.retryCount}/${this.maxRetries})...`);
-        
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-        
-        // Retry loading the video
-        await this.loadVideo(key, video);
+    });
+    
+    // Reset promises
+    this.loadPromises = {};
+    
+    // Keep completed sequences info
+    const completedSequences = this.completedSequences;
+    
+    // Reset all state except completed sequences
+    this.videos = {};
+    this.loadedCount = 0;
+    this.totalCount = 0;
+    
+    // Restore completed sequences
+    this.completedSequences = completedSequences;
+    
+    console.log('VideoLoader cleared');
+  }
+  
+  // Clear only non-transition videos to prevent flickering during transitions
+  clearNonTransitionVideos() {
+    const newVideos = {};
+    let keepCount = 0;
+    
+    // Only keep transition videos
+    Object.keys(this.videos).forEach(key => {
+      if (key === 'transition' || key.includes('transition')) {
+        newVideos[key] = this.videos[key];
+        if (this.videos[key].loaded) {
+          keepCount++;
+        }
       } else {
-        video.error = error;
-        video.loaded = true; // Mark as "loaded" even though it failed
-        this.loadedCount++;
-        this.onProgress(this.loadedCount, this.totalCount);
+        // Cancel any pending requests for non-transition videos
+        if (this.cancelTokens[key]) {
+          this.cancelTokens[key].cancel(`Request for ${key} canceled due to transition`);
+          delete this.cancelTokens[key];
+        }
+        
+        // Clear load promises
+        delete this.loadPromises[key];
       }
+    });
+    
+    // Update state
+    this.videos = newVideos;
+    this.loadedCount = keepCount;
+    this.totalCount = Object.keys(newVideos).length;
+    
+    console.log('Cleared non-transition videos, kept transition videos for smooth changes');
+  }
+  
+  // Add a video to be loaded
+  add(key, url) {
+    // Skip if already added
+    if (this.videos[key]) {
+      return;
     }
+    
+    // Format the URL to ensure it's absolute
+    const formattedUrl = formatVideoUrl(url);
+    
+    // Add cache-busting parameter to avoid browser caching
+    const finalUrl = formattedUrl.includes('?') ? 
+      `${formattedUrl}&nocache=${Date.now()}` : 
+      `${formattedUrl}?nocache=${Date.now()}`;
+    
+    console.log(`Adding video ${key} with URL: ${finalUrl}`);
+    
+    this.videos[key] = {
+      url: finalUrl,
+      loaded: false,
+      failed: false,
+      size: 0,
+      blob: null,
+      retries: 0
+    };
+    
+    this.totalCount++;
   }
   
   // Check if a video is already loaded
   isLoaded(key) {
-    return this.videos[key]?.loaded === true && !this.videos[key]?.error;
+    return this.videos[key]?.loaded === true;
   }
   
-  // Get list of all loaded video keys
-  getLoadedVideos() {
-    return Object.keys(this.videos).filter(key => 
-      this.videos[key].loaded && !this.videos[key].error
-    );
-  }
-  
-  // Get list of all videos that failed to load
-  getFailedVideos() {
-    return Object.keys(this.videos).filter(key => 
-      this.videos[key].loaded && this.videos[key].error
-    );
-  }
-  
-  // Update on preload progress
-  _updateProgress() {
-    if (this.onProgress) {
-      this.onProgress(this.loadedCount, this.totalCount);
-    }
-  }
-
-  // Check if a hotspot's sequence is fully preloaded
+  // Check if a complete sequence for a hotspot is preloaded
   isSequencePreloaded(hotspotId) {
-    // Check if all three videos in the sequence are loaded
-    return this.isLoaded(`diveIn_${hotspotId}`) && 
-           this.isLoaded(`floorLevel_${hotspotId}`) && 
-           this.isLoaded(`zoomOut_${hotspotId}`);
-  }
-
-  // Get all preloaded hotspot sequences
-  getPreloadedSequences() {
-    // Extract hotspot IDs from loaded video keys
-    const loadedVideos = this.getLoadedVideos();
-    const hotspotIds = new Set();
-    
-    loadedVideos.forEach(key => {
-      // Extract hotspot ID from key patterns like 'diveIn_123456'
-      const match = key.match(/^(diveIn|floorLevel|zoomOut)_(.+)$/);
-      if (match && match[2]) {
-        hotspotIds.add(match[2]);
-      }
-    });
-    
-    // Filter to only include hotspots with all 3 videos loaded
-    return Array.from(hotspotIds).filter(id => this.isSequencePreloaded(id));
-  }
-
-  // Ensure all videos get loaded even if timeout occurs
-  async preloadAll() {
-    return new Promise((resolve) => {
-      if (Object.keys(this.videos).length === 0) {
-        resolve(this.videos);
-        return;
-      }
-      
-      console.log(`Starting to preload ${Object.keys(this.videos).length} videos`);
-      
-      // Set up a global timeout
-      const globalTimeout = setTimeout(() => {
-        console.warn('Video preloading timed out globally, continuing with what we have');
-        // Mark all unloaded videos as "loaded" to prevent waiting
-        Object.keys(this.videos).forEach(key => {
-          const video = this.videos[key];
-          if (!video.loaded) {
-            video.loaded = true;
-            video.error = new Error('Global timeout');
-            this.loadedCount++;
-          }
-        });
-        this._updateProgress();
-        
-        // Log status of all videos
-        const loadedCount = this.getLoadedVideos().length;
-        const failedCount = this.getFailedVideos().length;
-        const pendingCount = Object.keys(this.videos).length - loadedCount - failedCount;
-        
-        console.log(`Preloading status: ${loadedCount} loaded, ${failedCount} failed, ${pendingCount} pending`);
-        
-        // Log preloaded sequences
-        const sequences = this.getPreloadedSequences();
-        console.log(`${sequences.length} complete sequences preloaded: ${sequences.join(', ')}`);
-        
-        resolve(this.videos);
-      }, 30000); // 30 second global timeout
-      
-      // Load all videos in parallel
-      const loadPromises = Object.entries(this.videos).map(([key, video]) => 
-        this.loadVideo(key, video)
-      );
-      
-      // Wait for all videos to either load or fail
-      Promise.all(loadPromises)
-        .then(() => {
-          clearTimeout(globalTimeout);
-          console.log('All videos loaded or failed to load');
-          
-          // Log preloaded sequences
-          const sequences = this.getPreloadedSequences();
-          console.log(`${sequences.length} complete sequences preloaded: ${sequences.join(', ')}`);
-          
-          resolve(this.videos);
-        })
-        .catch(error => {
-          clearTimeout(globalTimeout);
-          console.error('Error during video preloading:', error);
-          resolve(this.videos);
-        });
-    });
+    return !!this.completedSequences[hotspotId];
   }
   
-  // Get a preloaded video by key
-  get(key) {
-    const video = this.videos[key];
-    if (!video) return null;
-    
-    if (video.error) {
-      console.warn(`Video ${key} failed to load:`, video.error);
+  // Get all preloaded sequences
+  getPreloadedSequences() {
+    return Object.keys(this.completedSequences);
+  }
+  
+  // Load a specific video
+  async loadVideo(key) {
+    // Skip if already loaded or not found
+    if (!this.videos[key]) {
+      console.log(`Video ${key} not found in loader`);
       return null;
     }
     
-    return video.element;
-  }
-  
-  // Check if a video failed to load
-  hasError(key) {
-    return this.videos[key]?.error != null;
-  }
-  
-  // Get loading progress
-  getProgress() {
-    if (this.totalCount === 0) return 100;
-    return Math.floor((this.loadedCount / this.totalCount) * 100);
-  }
-  
-  // Clear all videos
-  clear() {
-    Object.keys(this.videos).forEach(key => {
-      const video = this.videos[key];
-      if (video.element) {
-        const src = video.element.src;
-        video.element.src = '';
-        video.element.load();
-        if (src.startsWith('blob:')) {
-          URL.revokeObjectURL(src);
+    if (this.videos[key].loaded) {
+      console.log(`Video ${key} already loaded, skipping`);
+      return this.videos[key].blob;
+    }
+    
+    // Check if we're already loading this video
+    if (this.loadPromises[key]) {
+      console.log(`Video ${key} is already loading, returning existing promise`);
+      return this.loadPromises[key];
+    }
+    
+    const video = this.videos[key];
+    const videoUrl = video.url;
+    
+    console.log(`Loading video ${key}: ${videoUrl}`);
+    
+    // Create a new cancel token for this request
+    this.cancelTokens[key] = axios.CancelToken.source();
+    
+    // Create a promise for this load
+    const loadPromise = new Promise(async (resolve, reject) => {
+      try {
+        // Wrap the request in a timeout promise to handle stalled requests
+        const timeoutPromise = new Promise((_, timeoutReject) => {
+          setTimeout(() => {
+            timeoutReject(new Error(`Video ${key} loading timed out after ${this.videoLoadTimeout}ms`));
+          }, this.videoLoadTimeout);
+        });
+        
+        // Race between the actual request and the timeout
+        const response = await Promise.race([
+          videoAxios.get(videoUrl, {
+            cancelToken: this.cancelTokens[key].token,
+            responseType: 'blob'
+          }),
+          timeoutPromise
+        ]);
+        
+        // Store the blob and mark as loaded
+        const videoBlob = response.data;
+        this.videos[key].blob = videoBlob;
+        this.videos[key].loaded = true;
+        this.videos[key].size = videoBlob.size;
+        this.loadedCount++;
+        
+        // Update progress
+        if (this.onProgress) {
+          this.onProgress(this.loadedCount, this.totalCount);
         }
+        
+        // Clean up the cancel token
+        delete this.cancelTokens[key];
+        delete this.loadPromises[key];
+        
+        // Check if this completes a sequence
+        this.checkForCompletedSequence(key);
+        
+        // Return the blob
+        resolve(videoBlob);
+      } catch (error) {
+        // Don't retry if request was canceled
+        if (axios.isCancel(error)) {
+          console.log(`Request for video ${key} was canceled`);
+          // Don't mark as failed if it was canceled - might be reloaded later
+          delete this.loadPromises[key];
+          resolve(null);
+        return;
       }
-      if (video.blob) {
-        video.blob = null;
+      
+        // Handle errors
+        console.error(`Error loading video ${key}:`, error);
+        
+        // Log the specific video URL that failed
+        const videoElement = document.createElement('video');
+        videoElement.src = videoUrl;
+        videoElement.onerror = (e) => {
+          console.error(`Error loading video ${key}:`, e);
+          console.error(`Failed URL: ${videoUrl}`);
+        };
+        
+        // Clean up event listener once error is reported
+        setTimeout(() => {
+          videoElement.onerror = null;
+        }, 1000);
+        
+        // Retry if we haven't exceeded max retries
+        if (this.videos[key] && this.videos[key].retries < this.maxRetries) {
+          this.videos[key].retries++;
+          console.log(`Retrying video ${key} (attempt ${this.videos[key].retries}/${this.maxRetries})...`);
+          
+          // Clear the cancel token
+          delete this.cancelTokens[key];
+          
+          // Wait before retrying
+          await new Promise(res => setTimeout(res, this.retryDelay));
+          
+          // Clean up the current promise
+          delete this.loadPromises[key];
+          
+          // Retry loading
+          try {
+            const result = await this.loadVideo(key);
+            resolve(result);
+          } catch (retryError) {
+            reject(retryError);
+          }
+        } else {
+          // Mark as failed after max retries
+          if (this.videos[key]) {
+            this.videos[key].failed = true;
+          }
+          
+          // Clean up the cancel token and promise
+          delete this.cancelTokens[key];
+          delete this.loadPromises[key];
+          
+          // Report loading complete even if failed
+          this.loadedCount++;
+          if (this.onProgress) {
+            this.onProgress(this.loadedCount, this.totalCount);
+          }
+          
+          reject(error);
+        }
       }
     });
     
-    this.videos = {};
-    this.loadedCount = 0;
-    this.totalCount = 0;
+    // Store the promise
+    this.loadPromises[key] = loadPromise;
+    
+    return loadPromise;
+  }
+  
+  // Check if a new key completes a sequence
+  checkForCompletedSequence(key) {
+    // Check if this is a sequence video
+    if (!key || typeof key !== 'string') return;
+    
+    // Format: [type]_[hotspotId] (e.g., diveIn_123abc)
+    const isSequenceVideo = key.includes('_');
+    if (!isSequenceVideo) return;
+    
+    // Extract hotspot ID
+    const [, hotspotId] = key.split('_');
+    if (!hotspotId) return;
+    
+    // Check if all parts of the sequence are loaded
+    const diveInLoaded = this.isLoaded(`diveIn_${hotspotId}`);
+    const floorLevelLoaded = this.isLoaded(`floorLevel_${hotspotId}`);
+    const zoomOutLoaded = this.isLoaded(`zoomOut_${hotspotId}`);
+    
+    // If all videos in the sequence are loaded, mark the sequence as complete
+    if (diveInLoaded && floorLevelLoaded && zoomOutLoaded) {
+      console.log(`Complete sequence for hotspot ${hotspotId} is now preloaded!`);
+      this.completedSequences[hotspotId] = true;
+    }
+  }
+  
+  // Preload a subset of videos based on priority
+  async preloadVideos(keys) {
+    const promises = keys.map(key => this.loadVideo(key));
+    return Promise.allSettled(promises);
+  }
+  
+  // Preload all videos
+  async preloadAll() {
+    const allKeys = Object.keys(this.videos);
+    if (allKeys.length === 0) {
+      console.log('No videos to preload');
+      return;
+    }
+    
+    console.log(`Starting to preload ${allKeys.length} videos`);
+    
+    // Separate videos by priority
+    const transitionVideos = allKeys.filter(key => 
+      key === 'transition' || key.includes('transition'));
+    
+    const sequenceVideos = allKeys.filter(key => 
+      key.includes('_') && !key.includes('transition'));
+    
+    const regularVideos = allKeys.filter(key => 
+      !transitionVideos.includes(key) && !sequenceVideos.includes(key));
+    
+    try {
+      // Load transition videos first (highest priority)
+      if (transitionVideos.length > 0) {
+        console.log(`Preloading ${transitionVideos.length} priority videos (transitions)`);
+        await this.preloadVideos(transitionVideos);
+      }
+      
+      // Load sequence videos second (medium priority)
+      if (sequenceVideos.length > 0) {
+        console.log(`Preloading ${sequenceVideos.length} sequence videos`);
+        await this.preloadVideos(sequenceVideos);
+      }
+      
+      // Load regular videos last (lowest priority)
+      if (regularVideos.length > 0) {
+        console.log(`Preloading ${regularVideos.length} regular videos`);
+        await this.preloadVideos(regularVideos);
+      }
+      
+      console.log('All videos loaded or failed to load');
+      
+      // Check for complete sequences
+      const completedSequences = this.getPreloadedSequences();
+      console.log(`${completedSequences.length} complete sequences preloaded: ${completedSequences.join(', ')}`);
+      
+      return completedSequences;
+    } catch (error) {
+      console.error('Error during preloading:', error);
+      return [];
+    }
   }
 }
 

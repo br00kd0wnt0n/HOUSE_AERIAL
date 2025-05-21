@@ -71,12 +71,16 @@ export function AdminProvider({ children }) {
     console.log('[AdminProvider] fetchLocations called.');
     try {
       const response = await retryWithBackoff(() => api.getLocations());
-      console.log('[AdminProvider] Locations API response:', response.data.length);
-      setLocations(response.data);
-      if (response.data.length > 0 && !selectedLocation) {
+      
+      // Handle both response formats
+      const locationsData = Array.isArray(response) ? response : (response.data || []);
+      
+      console.log('[AdminProvider] Locations API response:', locationsData.length);
+      setLocations(locationsData);
+      if (locationsData.length > 0 && !selectedLocation) {
          // Set selectedLocation only if it's not already set by another interaction
-        console.log('[AdminProvider] Setting default selectedLocation:', response.data[0].name);
-        setSelectedLocation(response.data[0]);
+        console.log('[AdminProvider] Setting default selectedLocation:', locationsData[0].name);
+        setSelectedLocation(locationsData[0]);
       }
     } catch (error) {
       console.error('Error fetching locations:', error);
@@ -93,10 +97,14 @@ export function AdminProvider({ children }) {
     // No direct dependency on 'assets' state here to avoid loops
     try {
       const response = await retryWithBackoff(() => api.getAssets(null, locationId));
-      console.log(`[AdminProvider] Assets API response for ${locationId}:`, response.data.length);
+      
+      // Handle both response formats
+      const assetsData = Array.isArray(response) ? response : (response.data || []);
+      
+      console.log(`[AdminProvider] Assets API response for ${locationId}:`, assetsData.length);
       // Merge new assets with existing, replacing if IDs match, to build a cumulative list
       setAssets(prevAssets => {
-        const newAssets = response.data.map(asset => ({ ...asset, location: asset.location || { _id: locationId } }));
+        const newAssets = assetsData.map(asset => ({ ...asset, location: asset.location || { _id: locationId } }));
         const updatedAssets = [...prevAssets];
         newAssets.forEach(newAsset => {
           const index = updatedAssets.findIndex(a => a._id === newAsset._id);
@@ -117,12 +125,16 @@ export function AdminProvider({ children }) {
     console.log(`[AdminProvider] fetchHotspotsForLocation called for ${locationId}.`);
     try {
       const response = await retryWithBackoff(() => api.getHotspotsByLocation(locationId));
-      console.log(`[AdminProvider] Hotspots API response for ${locationId}:`, response.data.length);
+      
+      // Handle the new response format which returns the array directly instead of {data: [...]}
+      const hotspotsData = Array.isArray(response) ? response : (response.data || []);
+      
+      console.log(`[AdminProvider] Hotspots API response for ${locationId}:`, hotspotsData.length);
       
       // Replace the entire hotspots array with only the hotspots from the current location
       // instead of accumulating hotspots from different locations
-      setHotspots(response.data);
-      console.log('[AdminProvider] Updated hotspots count for this location:', response.data.length);
+      setHotspots(hotspotsData);
+      console.log('[AdminProvider] Updated hotspots count for this location:', hotspotsData.length);
     } catch (error) {
       console.error(`Error fetching hotspots for ${locationId}:`, error);
       setSaveStatus({ success: false, message: `Failed to load hotspots: ${error.message}.` });
@@ -135,10 +147,14 @@ export function AdminProvider({ children }) {
     try {
       // Use getPlaylists() instead of the non-existent getPlaylistsByLocation
       const response = await retryWithBackoff(() => api.getPlaylists());
-      console.log(`[AdminProvider] All playlists API response:`, response.data.length);
+      
+      // Handle both response formats
+      const playlistsData = Array.isArray(response) ? response : (response.data || []);
+      
+      console.log(`[AdminProvider] All playlists API response:`, playlistsData.length);
       
       // Filter playlists for this location based on hotspot's location
-      const filteredPlaylists = response.data.filter(playlist => {
+      const filteredPlaylists = playlistsData.filter(playlist => {
         // Check if the playlist has a hotspot and that hotspot has a location matching our locationId
         return playlist.hotspot && 
                ((typeof playlist.hotspot.location === 'string' && playlist.hotspot.location === locationId) ||
