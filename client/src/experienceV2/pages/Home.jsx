@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useExperience } from '../context/ExperienceContext';
 import LoadingScreen from '../components/LoadingScreen/LoadingScreen';
 import logger from '../utils/logger';
+import dataLayer from '../utils/dataLayer';
 
 /**
  * Home.jsx - Main entry point for the v2 experience
  * Displays the location selection menu with real data from API
+ * Styled to match the v0 main menu look while maintaining v2 functionality
  */
 const Home = () => {
   // Module name for logging
@@ -17,7 +19,7 @@ const Home = () => {
     loadLocations,
     serviceWorkerReady,
     isLoading: globalLoading,
-    setIsLoading,
+    setIsLoading: setGlobalLoading,
     locations,
     preloadAllLocationsVideos,
     loadingProgress: globalProgress
@@ -25,13 +27,15 @@ const Home = () => {
   
   const [error, setError] = useState(null);
   const [loadingPhase, setLoadingPhase] = useState('initial'); // 'initial', 'locations', 'videos', 'complete'
+  const [buttonAssets, setButtonAssets] = useState({});
+  const [hoveredButton, setHoveredButton] = useState(null);
 
   // Handle location loading process
   const handleLocationLoad = useCallback(async () => {
     try {
       setError(null);
       setLoadingPhase('locations');
-      setIsLoading(true);
+      setGlobalLoading(true);
       
       // Load all locations from the API
       const locationData = await loadLocations();
@@ -39,7 +43,7 @@ const Home = () => {
       if (!locationData || locationData.length === 0) {
         setError('No locations found. Please check the server configuration.');
         setLoadingPhase('complete');
-        setIsLoading(false);
+        setGlobalLoading(false);
         return;
       }
       
@@ -68,19 +72,64 @@ const Home = () => {
       
       // Always complete loading, even if preloading fails
       setLoadingPhase('complete');
-      setIsLoading(false);
+      setGlobalLoading(false);
     } catch (err) {
       logger.error(MODULE, 'Error loading locations:', err);
       setError('Failed to load locations. Please try refreshing the page.');
       setLoadingPhase('complete');
-      setIsLoading(false);
+      setGlobalLoading(false);
     }
-  }, [loadLocations, preloadAllLocationsVideos, serviceWorkerReady, setIsLoading]);
+  }, [loadLocations, preloadAllLocationsVideos, serviceWorkerReady, setGlobalLoading]);
 
   // Load locations on component mount
   useEffect(() => {
     handleLocationLoad();
   }, [handleLocationLoad]);
+  
+  // Fetch button assets from API (similar to v0 menu)
+  useEffect(() => {
+    const fetchButtonAssets = async () => {
+      try {
+        // Use dataLayer to get button assets
+        const buttonAssets = await dataLayer.getAssetsByType('Button');
+        
+        if (buttonAssets && Array.isArray(buttonAssets)) {
+          // Organize buttons by location and state (ON/OFF)
+          const buttons = {};
+          
+          buttonAssets.forEach(asset => {
+            if (!asset.location || !asset.location.name) return;
+            
+            const locationName = asset.location.name;
+            const locationId = asset.location._id;
+            
+            if (!buttons[locationId]) {
+              buttons[locationId] = {
+                name: locationName,
+                normal: null, // OFF button
+                hover: null   // ON button
+              };
+            }
+            
+            // Determine button state from name
+            if (asset.name.endsWith('_Button_ON')) {
+              buttons[locationId].hover = asset.accessUrl;
+            } else if (asset.name.endsWith('_Button_OFF')) {
+              buttons[locationId].normal = asset.accessUrl;
+            }
+          });
+          
+          setButtonAssets(buttons);
+          logger.info(MODULE, 'Fetched button assets');
+        }
+      } catch (err) {
+        logger.error(MODULE, 'Error fetching button assets:', err);
+        setError('Failed to load button assets.');
+      }
+    };
+    
+    fetchButtonAssets();
+  }, []);
 
   // Handle location selection
   const handleLocationSelect = (locationId) => {
@@ -123,57 +172,80 @@ const Home = () => {
   }
 
   return (
-    <div className="min-h-screen bg-netflix-black text-white flex flex-col items-center justify-center p-6">
-      <h1 className="text-4xl font-bold mb-4">Netflix House</h1>
-      <p className="text-xl mb-6">Aerial Experience</p>
-      
-      {/* Show error message if any */}
-      {error && (
-        <div className="bg-red-800 text-white p-4 rounded-md mb-6 max-w-md">
-          <p className="font-semibold">Error</p>
-          <p>{error}</p>
-        </div>
-      )}
-      
-      <p className="text-base mb-8">Select a location to begin</p>
-      
-      {locations && locations.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {locations.map(location => (
-            <div 
-              key={location._id}
-              className="w-80 h-48 bg-netflix-red/10 hover:bg-netflix-red/30 rounded-md overflow-hidden cursor-pointer transition-all duration-300 transform hover:scale-105 flex flex-col shadow-lg"
-              onClick={() => handleLocationSelect(location._id)}
-            >
-              <div className="h-1/2 bg-netflix-red/20 flex items-center justify-center">
-                {/* This could be an image in the future */}
-                <span className="text-3xl">📍</span>
-              </div>
-              <div className="p-4 flex-1 flex flex-col justify-between">
-                <h3 className="text-xl font-semibold">{location.name}</h3>
-                {location.description && (
-                  <p className="text-sm text-gray-300 mt-1 line-clamp-2">{location.description}</p>
-                )}
-                <div className="mt-2">
-                  <span className="text-xs bg-netflix-red/50 py-1 px-2 rounded-full">
-                    {serviceWorkerReady ? 'Offline Ready' : 'Online Only'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p>No locations available. Please add locations in the admin panel.</p>
-      )}
-      
-      {/* Service worker status indicator */}
-      <div className="absolute bottom-4 left-4 flex items-center">
-        <div className={`w-3 h-3 rounded-full mr-2 ${serviceWorkerReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-        <span className="text-xs text-gray-400">
-          {serviceWorkerReady ? 'Offline Ready' : 'Online Only'}
-        </span>
+    <div className="flex flex-col justify-between items-center h-screen w-screen bg-black text-white overflow-hidden relative">
+      {/* Menu Header - similar to v0 */}
+      <div className="pt-[5vh] flex flex-col items-center z-10 w-full text-center">
+        <img 
+          src="https://upload.wikimedia.org/wikipedia/commons/7/7a/Logonetflix.png" 
+          alt="Netflix" 
+          className="w-[180px] h-auto mb-2.5"
+        />
+        <h1 className="text-5xl font-bold my-5 drop-shadow-lg">Welcome to Netflix House</h1>
       </div>
+      
+      {/* Menu Content - similar to v0 */}
+      <div className="flex-1 flex flex-col items-center justify-center z-10 w-full text-center">
+        <h2 className="text-4xl mb-10 drop-shadow-lg">Select a Location</h2>
+        
+        {/* Show error message if any */}
+        {error && (
+          <div className="bg-red-800 text-white p-4 rounded-md mb-6 max-w-md">
+            <p className="font-semibold">Error</p>
+            <p>{error}</p>
+          </div>
+        )}
+        
+        <div className="flex justify-center flex-wrap gap-[60px] m-0 p-0">
+          {locations && locations.length > 0 ? (
+            locations.map(location => (
+              <button
+                key={location._id}
+                className="w-[200px] h-[120px] bg-transparent border-none p-0 cursor-pointer transition-transform duration-300 block overflow-hidden rounded-none hover:scale-105 focus:outline-none"
+                onClick={() => handleLocationSelect(location._id)}
+                onMouseEnter={() => setHoveredButton(location._id)}
+                onMouseLeave={() => setHoveredButton(null)}
+              >
+                {buttonAssets[location._id] && (
+                  buttonAssets[location._id].normal || buttonAssets[location._id].hover
+                ) ? (
+                  <img 
+                    src={
+                      hoveredButton === location._id && buttonAssets[location._id].hover
+                        ? buttonAssets[location._id].hover 
+                        : buttonAssets[location._id].normal
+                          ? buttonAssets[location._id].normal
+                          : buttonAssets[location._id].hover
+                    } 
+                    alt={location.name} 
+                    className="block w-full h-full object-contain" 
+                  />
+                ) : (
+                  <div className="text-2xl font-bold text-white drop-shadow-lg p-[15px_25px] bg-[rgba(229,9,20,0.8)] rounded">
+                    {location.name}
+                  </div>
+                )}
+              </button>
+            ))
+          ) : (
+            <p>No locations available. Please add locations in the admin panel.</p>
+          )}
+        </div>
+      </div>
+      
+      {/* Menu Footer - similar to v0 */}
+      <div className="pb-[2vh] z-10 w-full text-center">
+        <p className="text-xl opacity-80 m-0">Experience the magic of Netflix in real life</p>
+      </div>
+      
+      {/* Service worker status indicator - positioned discreetly */}
+      {serviceWorkerReady !== undefined && (
+        <div className="absolute bottom-2 left-2 flex items-center z-10 opacity-50">
+          <div className={`w-2 h-2 rounded-full mr-1.5 ${serviceWorkerReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+          <span className="text-xs text-gray-400">
+            {serviceWorkerReady ? 'Offline Ready' : 'Online Only'}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
