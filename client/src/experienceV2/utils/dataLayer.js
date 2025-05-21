@@ -11,12 +11,18 @@ import logger from './logger';
 // Module name for logging
 const MODULE = 'DataLayer';
 
-// Cache for API responses
+// Cache configuration
+const CACHE_CONFIG = {
+  MAX_ENTRIES_PER_TYPE: 50,  // Maximum entries per cache type
+  EXPIRY_TIME: 5 * 60 * 1000 // Cache expiration time: 5 minutes
+};
+
+// Cache for API responses with timestamps
 const cache = {
-  locations: null,
-  assets: {},
-  hotspots: {},
-  playlists: {}
+  locations: { data: null, timestamp: 0 },
+  assets: { data: {}, timestamp: 0, entries: 0 },
+  hotspots: { data: {}, timestamp: 0, entries: 0 },
+  playlists: { data: {}, timestamp: 0, entries: 0 }
 };
 
 // Request tracking to prevent duplicate in-flight requests
@@ -33,6 +39,168 @@ const getCacheKey = (endpoint, params = {}) => {
 };
 
 /**
+ * Check if cached data is still valid
+ * @param {Object} cacheEntry - Cache entry with data and timestamp
+ * @returns {boolean} True if cache is valid
+ */
+const isCacheValid = (cacheEntry) => {
+  if (!cacheEntry || !cacheEntry.timestamp) return false;
+  
+  const now = Date.now();
+  return (now - cacheEntry.timestamp) < CACHE_CONFIG.EXPIRY_TIME;
+};
+
+/**
+ * Check cache for a specific request
+ * @param {string} endpoint - API endpoint
+ * @param {Object} params - Request parameters
+ * @param {boolean} forceRefresh - Whether to force refresh from API
+ * @returns {Object|null} Cached data or null if not found
+ */
+const checkCache = (endpoint, params = {}, forceRefresh = false) => {
+  // Skip cache if forced refresh
+  if (forceRefresh) return null;
+  
+  // Handle root-level endpoints
+  if (Object.keys(params).length === 0) {
+    if (cache[endpoint]?.data !== null && isCacheValid(cache[endpoint])) {
+      logger.debug(MODULE, `Using cached data for ${endpoint}`);
+      return cache[endpoint].data;
+    }
+    return null;
+  }
+  
+  // Handle ID-based requests
+  if (params.id && cache[endpoint]?.data?.[params.id]) {
+    if (isCacheValid(cache[endpoint])) {
+      logger.debug(MODULE, `Using cached data for ${endpoint}/${params.id}`);
+      return cache[endpoint].data[params.id];
+    }
+  }
+  
+  // Handle location-based requests
+  if (params.locationId && cache[endpoint]?.data?.[params.locationId]) {
+    if (isCacheValid(cache[endpoint])) {
+      logger.debug(MODULE, `Using cached data for ${endpoint} by location/${params.locationId}`);
+      return cache[endpoint].data[params.locationId];
+    }
+  }
+  
+  return null;
+};
+
+/**
+ * Make the appropriate API call based on endpoint and parameters
+ * @param {string} endpoint - API endpoint
+ * @param {Object} params - Request parameters
+ * @returns {Promise<Object>} API response
+ */
+const makeApiCall = async (endpoint, params = {}) => {
+  logger.debug(MODULE, `Making API request to ${endpoint}`);
+  
+  // Choose how to call the API based on the endpoint
+  // This is necessary because the API methods have different signatures
+  switch (endpoint) {
+    case 'getAssetsByType':
+      return api.getAssetsByType(params.type, params.locationId);
+    case 'getHotspotsByLocation':
+      return api.getHotspotsByLocation(params.locationId);
+    case 'getPlaylistByHotspot':
+      return api.getPlaylistByHotspot(params.hotspotId);
+    case 'getLocation':
+    case 'getHotspot':
+    case 'getPlaylist':
+      return api[endpoint](params.id);
+    default:
+      // For methods that don't need special handling
+      return api[endpoint](params);
+  }
+};
+
+/**
+ * Validate API response format
+ * @param {Object} response - API response
+ * @param {string} endpoint - API endpoint
+ * @returns {Object|Array} Validated response data
+ */
+const validateResponse = (response, endpoint) => {
+  // Check for valid response format
+  if (!response || typeof response !== 'object') {
+    logger.error(MODULE, `Invalid response from ${endpoint}: not an object`);
+    return [];
+  }
+  
+  // Ensure data property exists (most API responses have this format)
+  const responseData = response.data || response;
+  
+  // Validate array responses for collection endpoints
+  if (endpoint.startsWith('get') && 
+      !endpoint.includes('By') && 
+      !endpoint.endsWith('ById') && 
+      !endpoint.endsWith('ByLocation')) {
+    // For collection endpoints, ensure the response is an array
+    if (!Array.isArray(responseData)) {
+      logger.error(MODULE, `Invalid collection response from ${endpoint}: not an array`);
+      return [];
+    }
+  }
+  
+  return responseData;
+};
+
+/**
+ * Update cache with new data
+ * @param {string} endpoint - API endpoint
+ * @param {Object} params - Request parameters
+ * @param {Object} data - Data to cache
+ */
+const updateCache = (endpoint, params = {}, data) => {
+  const now = Date.now();
+  
+  // For root-level endpoints (like getLocations)
+  if (Object.keys(params).length === 0) {
+    cache[endpoint] = { data, timestamp: now };
+    return;
+  }
+  
+  // For ID or location-based endpoints
+  if (!cache[endpoint]) {
+    cache[endpoint] = { data: {}, timestamp: now, entries: 0 };
+  }
+  
+  // Update timestamp on the cache group
+  cache[endpoint].timestamp = now;
+  
+  // Add or update specific entry
+  if (params.id) {
+    // Check if this is a new entry
+    if (!cache[endpoint].data[params.id]) {
+      cache[endpoint].entries++;
+    }
+    cache[endpoint].data[params.id] = data;
+  } else if (params.locationId) {
+    // Check if this is a new entry
+    if (!cache[endpoint].data[params.locationId]) {
+      cache[endpoint].entries++;
+    }
+    cache[endpoint].data[params.locationId] = data;
+  }
+  
+  // Enforce cache size limits
+  if (cache[endpoint].entries > CACHE_CONFIG.MAX_ENTRIES_PER_TYPE) {
+    // Simple approach: just remove random entries until under limit
+    // A more sophisticated approach would track individual timestamps
+    const keysToRemove = Object.keys(cache[endpoint].data).slice(0, 
+      cache[endpoint].entries - CACHE_CONFIG.MAX_ENTRIES_PER_TYPE);
+    
+    keysToRemove.forEach(key => {
+      delete cache[endpoint].data[key];
+      cache[endpoint].entries--;
+    });
+  }
+};
+
+/**
  * Make an API request with deduplication and caching
  * @param {string} endpoint - API endpoint
  * @param {Object} params - Request parameters
@@ -46,21 +214,10 @@ const makeRequest = async (endpoint, params = {}, options = {}) => {
   const cacheKey = getCacheKey(endpoint, params);
   
   // Check cache first unless forced refresh
-  if (useCache && !forceRefresh && cache[endpoint] !== undefined) {
-    if (Object.keys(params).length === 0 && cache[endpoint] !== null) {
-      logger.debug(MODULE, `Using cached data for ${endpoint}`);
-      return cache[endpoint];
-    }
-    
-    if (params.id && cache[endpoint][params.id]) {
-      logger.debug(MODULE, `Using cached data for ${endpoint}/${params.id}`);
-      return cache[endpoint][params.id];
-    }
-    
-    // Special case for location-based endpoints
-    if (params.locationId && cache[endpoint][params.locationId]) {
-      logger.debug(MODULE, `Using cached data for ${endpoint} by location/${params.locationId}`);
-      return cache[endpoint][params.locationId];
+  if (useCache) {
+    const cachedData = checkCache(endpoint, params, forceRefresh);
+    if (cachedData !== null) {
+      return cachedData;
     }
   }
   
@@ -70,69 +227,22 @@ const makeRequest = async (endpoint, params = {}, options = {}) => {
     return pendingRequests[cacheKey];
   }
   
-  // Make the API request - how we call the API depends on the endpoint
-  // as some endpoints expect positional parameters, not an object
+  // Make the API request
   try {
-    logger.debug(MODULE, `Making API request to ${endpoint}`);
+    // Store promise in pending requests
+    pendingRequests[cacheKey] = makeApiCall(endpoint, params)
+      .then(response => validateResponse(response, endpoint));
     
-    // Choose how to call the API based on the endpoint
-    // This is necessary because the API methods have different signatures
-    let apiPromise;
-    
-    // Handle special cases for different API methods
-    if (endpoint === 'getAssetsByType') {
-      apiPromise = api.getAssetsByType(params.type, params.locationId);
-    } else if (endpoint === 'getHotspotsByLocation') {
-      apiPromise = api.getHotspotsByLocation(params.locationId);
-    } else if (endpoint === 'getPlaylistByHotspot') {
-      apiPromise = api.getPlaylistByHotspot(params.hotspotId);
-    } else if (endpoint === 'getLocation' || endpoint === 'getHotspot' || endpoint === 'getPlaylist') {
-      apiPromise = api[endpoint](params.id);
-    } else {
-      // For methods that don't need special handling
-      apiPromise = api[endpoint](params);
-    }
-    
-    pendingRequests[cacheKey] = apiPromise;
-    const response = await pendingRequests[cacheKey];
-    
-    // Check for valid response format
-    if (!response || typeof response !== 'object') {
-      logger.error(MODULE, `Invalid response from ${endpoint}: not an object`);
-      delete pendingRequests[cacheKey];
-      return [];
-    }
-    
-    // Ensure data property exists (most API responses have this format)
-    const responseData = response.data || response;
-    
-    // Validate array responses for collection endpoints
-    if (endpoint.startsWith('get') && !endpoint.includes('By') && !endpoint.endsWith('ById') && !endpoint.endsWith('ByLocation')) {
-      // For collection endpoints, ensure the response is an array
-      if (!Array.isArray(responseData)) {
-        logger.error(MODULE, `Invalid collection response from ${endpoint}: not an array`);
-        delete pendingRequests[cacheKey];
-        return [];
-      }
-    }
+    const responseData = await pendingRequests[cacheKey];
     
     // Update cache
     if (useCache) {
-      if (Object.keys(params).length === 0) {
-        cache[endpoint] = responseData;
-      } else if (params.id) {
-        if (!cache[endpoint]) cache[endpoint] = {};
-        cache[endpoint][params.id] = responseData;
-      } else if (params.locationId) {
-        if (!cache[endpoint]) cache[endpoint] = {};
-        cache[endpoint][params.locationId] = responseData;
-      }
+      updateCache(endpoint, params, responseData);
     }
     
     // Clean up pending request
     delete pendingRequests[cacheKey];
     
-    // Return the expected data structure - mostly always response.data
     return responseData;
   } catch (error) {
     // Clean up pending request on error
@@ -151,7 +261,11 @@ export const clearCache = (endpoint = null, id = null) => {
   if (!endpoint) {
     // Clear all cache
     Object.keys(cache).forEach(key => {
-      cache[key] = typeof cache[key] === 'object' ? {} : null;
+      if (typeof cache[key].data === 'object') {
+        cache[key] = { data: {}, timestamp: 0, entries: 0 };
+      } else {
+        cache[key] = { data: null, timestamp: 0 };
+      }
     });
     logger.info(MODULE, 'Cleared all cache');
     return;
@@ -159,20 +273,106 @@ export const clearCache = (endpoint = null, id = null) => {
   
   if (!id) {
     // Clear specific endpoint
-    if (typeof cache[endpoint] === 'object') {
-      cache[endpoint] = {};
+    if (typeof cache[endpoint]?.data === 'object') {
+      cache[endpoint] = { data: {}, timestamp: 0, entries: 0 };
     } else {
-      cache[endpoint] = null;
+      cache[endpoint] = { data: null, timestamp: 0 };
     }
     logger.info(MODULE, `Cleared cache for ${endpoint}`);
     return;
   }
   
   // Clear specific ID in endpoint
-  if (typeof cache[endpoint] === 'object' && cache[endpoint][id]) {
-    delete cache[endpoint][id];
+  if (typeof cache[endpoint]?.data === 'object' && cache[endpoint].data[id]) {
+    delete cache[endpoint].data[id];
+    cache[endpoint].entries--;
     logger.info(MODULE, `Cleared cache for ${endpoint}/${id}`);
   }
+};
+
+/**
+ * Look for transition video using ID pattern matching
+ * @param {Array} transitionAssets - Available transition assets
+ * @param {string} sourceLocationId - Source location ID
+ * @param {string} destinationLocationId - Destination location ID
+ * @returns {Object|null} Matching transition video or null
+ */
+const findTransitionByIdPattern = (transitionAssets, sourceLocationId, destinationLocationId) => {
+  const idPattern = `transition_${sourceLocationId}_to_${destinationLocationId}`;
+  
+  const match = transitionAssets.find(asset => 
+    asset.name && asset.name.toLowerCase().includes(idPattern)
+  );
+  
+  if (match) {
+    logger.debug(MODULE, `Found transition video by ID pattern: ${match.name}`);
+  }
+  
+  return match;
+};
+
+/**
+ * Look for transition video using location name pattern matching
+ * @param {Array} transitionAssets - Available transition assets
+ * @param {string} sourceLocationName - Source location name
+ * @param {string} destLocationName - Destination location name
+ * @returns {Object|null} Matching transition video or null
+ */
+const findTransitionByNamePattern = (transitionAssets, sourceLocationName, destLocationName) => {
+  if (!sourceLocationName || !destLocationName) return null;
+  
+  const namePattern = `${sourceLocationName}_to_${destLocationName}`;
+  
+  const match = transitionAssets.find(asset => 
+    asset.name && asset.name.toLowerCase().includes(namePattern)
+  );
+  
+  if (match) {
+    logger.debug(MODULE, `Found transition video by name pattern: ${match.name}`);
+  }
+  
+  return match;
+};
+
+/**
+ * Look for transition video using metadata
+ * @param {Array} transitionAssets - Available transition assets
+ * @param {string} sourceLocationId - Source location ID
+ * @param {string} destinationLocationId - Destination location ID
+ * @returns {Object|null} Matching transition video or null
+ */
+const findTransitionByMetadata = (transitionAssets, sourceLocationId, destinationLocationId) => {
+  const match = transitionAssets.find(asset => 
+    asset.metadata && 
+    ((asset.metadata.sourceLocation === sourceLocationId && 
+      asset.metadata.destinationLocation === destinationLocationId) ||
+     (asset.metadata.from === sourceLocationId && 
+      asset.metadata.to === destinationLocationId))
+  );
+  
+  if (match) {
+    logger.debug(MODULE, `Found transition video by metadata: ${match.name}`);
+  }
+  
+  return match;
+};
+
+/**
+ * Find generic transition video as fallback
+ * @param {Array} transitionAssets - Available transition assets
+ * @returns {Object|null} Generic transition video or null
+ */
+const findGenericTransition = (transitionAssets) => {
+  const match = transitionAssets.find(asset => 
+    asset.name && asset.name.toLowerCase().includes('transition') &&
+    asset.accessUrl
+  );
+  
+  if (match) {
+    logger.debug(MODULE, `Using generic transition: ${match.name}`);
+  }
+  
+  return match;
 };
 
 // API methods with deduplication and caching
@@ -211,71 +411,76 @@ const dataLayer = {
         return null;
       }
       
-      // Look for transition videos that match the source and destination
-      // Try different naming patterns:
-      // 1. transition_[sourceId]_to_[destId]
-      // 2. [sourceName]_to_[destName]
-      // 3. Any transition with metadata matching source and dest
-      
+      // Only log at debug level in production to reduce verbosity
       logger.debug(MODULE, `Looking for transition from ${sourceLocationId} to ${destinationLocationId}`);
       
       // First, get location names for pattern matching
-      let sourceLocation, destinationLocation;
-      const locations = await dataLayer.getLocations();
+      let sourceLocationName, destLocationName;
       
-      if (Array.isArray(locations)) {
-        sourceLocation = locations.find(loc => loc._id === sourceLocationId);
-        destinationLocation = locations.find(loc => loc._id === destinationLocationId);
+      try {
+        const locations = await dataLayer.getLocations();
+        
+        if (Array.isArray(locations)) {
+          const sourceLocation = locations.find(loc => loc._id === sourceLocationId);
+          const destinationLocation = locations.find(loc => loc._id === destinationLocationId);
+          
+          sourceLocationName = sourceLocation?.name?.toLowerCase().replace(/\s+/g, '_');
+          destLocationName = destinationLocation?.name?.toLowerCase().replace(/\s+/g, '_');
+        }
+      } catch (error) {
+        logger.debug(MODULE, 'Could not fetch location names for transition lookup');
+        // Continue with other lookup methods
       }
       
-      const sourceLocationName = sourceLocation?.name?.toLowerCase().replace(/\s+/g, '_');
-      const destLocationName = destinationLocation?.name?.toLowerCase().replace(/\s+/g, '_');
-      
-      // Define patterns to match
-      const idPattern = `transition_${sourceLocationId}_to_${destinationLocationId}`;
-      const namePattern = sourceLocationName && destLocationName ? 
-        `${sourceLocationName}_to_${destLocationName}` : null;
-      
-      // Try to find a matching transition asset
+      // Try multiple strategies to find a transition video
       let transitionVideo = null;
       
-      // Try exact ID pattern match
-      transitionVideo = transitionAssets.find(asset => 
-        asset.name && asset.name.toLowerCase().includes(idPattern)
+      // Strategy 1: Try exact ID pattern match
+      transitionVideo = findTransitionByIdPattern(
+        transitionAssets, 
+        sourceLocationId, 
+        destinationLocationId
       );
       
-      // Try name pattern match
-      if (!transitionVideo && namePattern) {
-        transitionVideo = transitionAssets.find(asset => 
-          asset.name && asset.name.toLowerCase().includes(namePattern)
+      // Strategy 2: Try name pattern match
+      if (!transitionVideo && sourceLocationName && destLocationName) {
+        transitionVideo = findTransitionByNamePattern(
+          transitionAssets,
+          sourceLocationName,
+          destLocationName
         );
       }
       
-      // Try checking metadata
+      // Strategy 3: Try checking metadata
       if (!transitionVideo) {
-        transitionVideo = transitionAssets.find(asset => 
-          asset.metadata && 
-          ((asset.metadata.sourceLocation === sourceLocationId && 
-            asset.metadata.destinationLocation === destinationLocationId) ||
-           (asset.metadata.from === sourceLocationId && 
-            asset.metadata.to === destinationLocationId))
+        transitionVideo = findTransitionByMetadata(
+          transitionAssets,
+          sourceLocationId,
+          destinationLocationId
         );
       }
       
-      // If still not found, try generic transition
+      // Strategy 4: If still not found, try generic transition
       if (!transitionVideo) {
-        transitionVideo = transitionAssets.find(asset => 
-          asset.name && asset.name.toLowerCase().includes('transition') &&
-          asset.accessUrl
-        );
+        transitionVideo = findGenericTransition(transitionAssets);
         
         if (transitionVideo) {
-          logger.info(MODULE, `No specific transition found, using generic transition: ${transitionVideo.name}`);
+          // Only log at info level in development
+          if (process.env.NODE_ENV === 'development') {
+            logger.info(MODULE, `No specific transition found, using generic transition: ${transitionVideo.name}`);
+          } else {
+            logger.debug(MODULE, `Using generic transition: ${transitionVideo.name}`);
+          }
         }
       }
       
       if (transitionVideo) {
-        logger.info(MODULE, `Found transition video: ${transitionVideo.name}`);
+        // Only log at info level in development
+        if (process.env.NODE_ENV === 'development') {
+          logger.info(MODULE, `Found transition video: ${transitionVideo.name}`);
+        } else {
+          logger.debug(MODULE, `Found transition video: ${transitionVideo.name}`);
+        }
       } else {
         logger.warn(MODULE, `No suitable transition video found between locations`);
       }
@@ -299,49 +504,20 @@ const dataLayer = {
     }
     
     try {
-      // Check cache first (properly this time)
-      const cacheKey = getCacheKey('getHotspotsByLocation', { locationId });
-      
-      // If we have cached data and not forcing refresh, use it
-      if (!forceRefresh && cache.hotspots && cache.hotspots[locationId]) {
-        logger.debug(MODULE, `Using cached hotspots for location: ${locationId}`);
-        return cache.hotspots[locationId];
-      }
-      
-      // If there's already a request in flight, reuse it
-      if (pendingRequests[cacheKey]) {
-        logger.debug(MODULE, `Reusing pending hotspots request for location: ${locationId}`);
-        return pendingRequests[cacheKey];
-      }
-      
       // Only log at debug level in production to reduce noise
-      if (process.env.NODE_ENV !== 'production') {
-        logger.info(MODULE, `Requesting hotspots for location: ${locationId}`);
-      } else {
-        logger.debug(MODULE, `Requesting hotspots for location: ${locationId}`);
-      }
+      logger.debug(MODULE, `Requesting hotspots for location: ${locationId}`);
       
-      // Make the request
-      const apiPromise = api.getHotspotsByLocation(locationId);
-      
-      // Store in pendingRequests for deduplication
-      pendingRequests[cacheKey] = apiPromise;
-      
-      const response = await apiPromise;
-      delete pendingRequests[cacheKey];
-      
-      // For logging only - use debug level in production
-      if (process.env.NODE_ENV !== 'production') {
-        if (response) {
-          logger.debug(MODULE, `Got hotspots response type: ${typeof response}, isArray: ${Array.isArray(response)}`);
-          if (Array.isArray(response)) {
-            logger.info(MODULE, `Found ${response.length} hotspots from API for location ${locationId}`);
-          }
-        }
-      }
+      const hotspots = await makeRequest(
+        'getHotspotsByLocation', 
+        { locationId }, 
+        { forceRefresh }
+      );
       
       // Ensure we have an array to work with
-      const hotspots = Array.isArray(response) ? response : [];
+      if (!Array.isArray(hotspots)) {
+        logger.warn(MODULE, `Received non-array response for hotspots`);
+        return [];
+      }
       
       // Validate hotspots
       const validHotspots = hotspots.filter(hotspot => 
@@ -353,12 +529,10 @@ const dataLayer = {
         hotspot.coordinates.length >= 3
       );
       
-      // Update cache
-      if (!cache.hotspots) cache.hotspots = {};
-      cache.hotspots[locationId] = validHotspots.length > 0 ? validHotspots : hotspots;
-      
       if (validHotspots.length === 0 && hotspots.length > 0) {
         logger.warn(MODULE, `Found ${hotspots.length} hotspots for location ${locationId}, but none have valid coordinates`);
+      } else {
+        logger.debug(MODULE, `Found ${validHotspots.length} valid hotspots for location ${locationId}`);
       }
       
       return validHotspots.length > 0 ? validHotspots : hotspots;

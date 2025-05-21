@@ -1,0 +1,116 @@
+/* LocationButton.css - Styling for location button component */
+
+/* Variables for consistent styling */
+:root {
+  --location-button-size: 140px;
+  --location-button-transition-duration: 0.3s;
+  --location-button-hover-scale: 1.1;
+  --location-button-normal-scale: 1;
+}
+
+/* Base button container */
+.location-button {
+  width: var(--location-button-size);
+  height: var(--location-button-size);
+  position: relative;
+  display: block;
+  cursor: pointer;
+  transition: transform var(--location-button-transition-duration) ease;
+}
+
+/* Hover effect using CSS instead of React state */
+.location-button:hover {
+  transform: scale(var(--location-button-hover-scale));
+}
+
+/* Base image styles for both ON and OFF states */
+.location-button-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity var(--location-button-transition-duration) ease;
+}
+
+/* OFF state (shown by default) */
+.location-button-image-off {
+  opacity: 1;
+}
+
+/* ON state (hidden by default) */
+.location-button-image-on {
+  opacity: 0;
+}
+
+/* When parent is hovered, change opacities */
+.location-button:hover .location-button-image-off {
+  opacity: 0;
+}
+
+.location-button:hover .location-button-image-on {
+  opacity: 1;
+}
+
+/* Fallback styling for when button assets are missing */
+.location-button-fallback {
+  width: 9rem; /* w-36 in Tailwind */
+  height: 9rem; /* h-36 in Tailwind */
+  background-color: #e50914; /* Netflix red */
+  border-radius: 9999px; /* rounded-full in Tailwind */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--location-button-transition-duration) ease;
+}
+
+.location-button-fallback:hover {
+  background-color: rgba(229, 9, 20, 0.8); /* Netflix red with opacity */
+}
+
+.location-button-fallback-text {
+  color: white;
+  font-size: 1.25rem; /* text-xl in Tailwind */
+  font-weight: 700; /* font-bold in Tailwind */
+}
+
+/* Debug mode styling */
+.location-button-debug-label {
+  position: absolute;
+  top: -2rem;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 0.75rem; /* text-xs in Tailwind */
+  padding: 0.25rem;
+  border-radius: 0.25rem; /* rounded in Tailwind */
+}
+
+/* Loading overlay styling */
+.location-button-loading {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px; /* rounded-full in Tailwind */
+}
+
+.location-button-loading-spinner {
+  width: 1rem; /* w-4 in Tailwind */
+  height: 1rem; /* h-4 in Tailwind */
+  border: 2px solid #e50914; /* Netflix red */
+  border-top-color: transparent;
+  border-radius: 9999px; /* rounded-full in Tailwind */
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

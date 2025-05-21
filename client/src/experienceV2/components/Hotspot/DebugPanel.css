@@ -1,0 +1,9 @@
+/* DebugPanel.css */
+/* Styles for the debug panel component */
+/* This file will be imported only when the debug panel is rendered */
+
+@import "./HotspotVariables.css";
+@import "./DebugStyles.css";
+
+/* This file intentionally left empty as all styles are now imported from DebugStyles.css */
+/* Keeping this file for backward compatibility */

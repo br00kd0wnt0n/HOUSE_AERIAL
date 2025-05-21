@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { cn } from '../../../lib/utils';
 import logger from '../../utils/logger';
+import './LocationButton.css';
 
 /**
  * LocationButton.jsx - Component for rendering location buttons in the V2 experience
@@ -7,108 +9,113 @@ import logger from '../../utils/logger';
  */
 const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, debugMode }) => {
   const MODULE = 'LocationButton';
-  const [isHovered, setIsHovered] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const loadingTimeoutRef = useRef(null);
 
-  // Check if we have valid button assets
+  // Check if we have valid button assets and set a timeout for loading fallback
   useEffect(() => {
     if (!onButtonAssets?.accessUrl || !offButtonAssets?.accessUrl) {
       logger.warn(MODULE, `Missing button assets for location: ${location?.name || 'unknown'}`);
       setLoadError(true);
     } else {
-      logger.info(MODULE, `Button assets found for ${location?.name}: ${onButtonAssets?.accessUrl} / ${offButtonAssets?.accessUrl}`);
+      logger.debug(MODULE, `Button assets found for ${location?.name}: ${onButtonAssets?.accessUrl} / ${offButtonAssets?.accessUrl}`);
       setLoadError(false);
+      
+      // Set a timeout for loading in case images take too long
+      loadingTimeoutRef.current = setTimeout(() => {
+        if (!imagesLoaded) {
+          logger.warn(MODULE, `Loading timeout for location button: ${location?.name}`);
+          setImagesLoaded(true); // Force loaded state after timeout
+        }
+      }, 5000); // 5 second timeout
     }
-  }, [onButtonAssets, offButtonAssets, location]);
+    
+    // Clear timeout on unmount or when assets change
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, [onButtonAssets, offButtonAssets, location, imagesLoaded]);
 
   const handleClick = () => {
     if (onClick && location) {
       onClick(location);
-      logger.info(MODULE, `Button clicked for location: ${location.name}`);
+      logger.debug(MODULE, `Button clicked for location: ${location.name}`);
     }
   };
 
-  const handleImageLoad = () => {
-    logger.info(MODULE, `Button image loaded for location: ${location?.name}`);
-    setImagesLoaded(true);
+  // Track loading of both images
+  const [onImageLoaded, setOnImageLoaded] = useState(false);
+  const [offImageLoaded, setOffImageLoaded] = useState(false);
+  
+  // Update overall loading state when both images are loaded
+  useEffect(() => {
+    if (onImageLoaded && offImageLoaded) {
+      setImagesLoaded(true);
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    }
+  }, [onImageLoaded, offImageLoaded]);
+
+  const handleOnImageLoad = () => {
+    logger.debug(MODULE, `ON button image loaded for location: ${location?.name}`);
+    setOnImageLoaded(true);
+  };
+  
+  const handleOffImageLoad = () => {
+    logger.debug(MODULE, `OFF button image loaded for location: ${location?.name}`);
+    setOffImageLoaded(true);
   };
 
   // Render fallback if assets are missing
   if (loadError) {
     return (
       <div 
-        className="w-36 h-36 bg-netflix-red rounded-full flex items-center justify-center cursor-pointer hover:bg-netflix-red/80 transition-all"
+        className="location-button-fallback"
         onClick={handleClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        aria-label={`Go to ${location?.name || 'unknown location'}`}
       >
-        <span className="text-white text-xl font-bold">{location?.name?.substring(0, 2) || '??'}</span>
+        <span className="location-button-fallback-text">{location?.name?.substring(0, 2) || '??'}</span>
       </div>
     );
   }
 
-  // Apply direct styles to ensure proper sizing
-  const buttonStyle = {
-    width: '140px',
-    height: '140px',
-    position: 'relative',
-    display: 'block',
-    cursor: 'pointer',
-    transition: 'transform 0.3s ease',
-    transform: isHovered ? 'scale(1.1)' : 'scale(1)'
-  };
-
-  const imageStyle = {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    objectFit: 'contain',
-    transition: 'opacity 0.3s ease'
-  };
-
   return (
     <div 
-      style={buttonStyle}
+      className="location-button"
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      aria-label={`Go to ${location?.name || 'unknown location'}`}
     >
       {/* OFF state (shown when not hovered) */}
       <img 
         src={offButtonAssets?.accessUrl} 
         alt={`${location?.name || 'Location'} Button`}
-        style={{
-          ...imageStyle,
-          opacity: isHovered ? 0 : 1
-        }}
-        onLoad={handleImageLoad}
+        className={cn('location-button-image location-button-image-off')}
+        onLoad={handleOffImageLoad}
       />
       
       {/* ON state (shown when hovered) */}
       <img 
         src={onButtonAssets?.accessUrl} 
         alt={`${location?.name || 'Location'} Button Active`}
-        style={{
-          ...imageStyle,
-          opacity: isHovered ? 1 : 0
-        }}
-        onLoad={handleImageLoad}
+        className={cn('location-button-image location-button-image-on')}
+        onLoad={handleOnImageLoad}
       />
       
       {/* Debug information */}
       {debugMode && (
-        <div className="absolute -top-8 left-0 right-0 bg-black/80 text-white text-xs p-1 rounded">
+        <div className="location-button-debug-label">
           {location?.name}
         </div>
       )}
       
       {/* Loading overlay */}
       {!imagesLoaded && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
-          <div className="w-4 h-4 border-2 border-netflix-red border-t-transparent rounded-full animate-spin"></div>
+        <div className="location-button-loading">
+          <div className="location-button-loading-spinner"></div>
         </div>
       )}
     </div>

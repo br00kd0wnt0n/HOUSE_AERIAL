@@ -55,9 +55,57 @@ client/src/
 
 ### State Management
 
+#### Global State Patterns
+
 - **Context API**: Used for global state management
-  - VideoContext: Manages video playback state and sequence
-  - AdminContext: Handles admin mode state and data operations
+  - **ExperienceContext**: Central point for experience state management
+    - Manages loading state, locations, and video preloading
+    - Exposes methods for video and location management
+    - Composes multiple specialized hooks for different responsibilities
+  - **AdminContext**: Handles admin mode state and data operations
+
+#### Custom Hook Design Patterns
+
+- **Function Composition**: Hooks are designed to be composable
+  - Larger hooks use smaller, focused hooks for specific functionality
+  - Consistent interface patterns for easy integration
+- **Separation of Concerns**: Each hook has a single, clear responsibility
+
+  - `useLocationManagement`: Handles location data loading and caching
+  - `useVideoPreloader`: Manages video preloading and tracking
+  - `useServiceWorker`: Interfaces with browser service worker API
+
+- **Caching Strategy**: Strategic caching to avoid redundant requests
+
+  - Time-based expiration (typically 5 minutes)
+  - Staleness checks with force refresh capability
+  - Memory efficient with entry limits
+
+- **Resource Optimization**:
+  - Batch loading of related resources
+  - Preloading of resources likely to be needed soon
+  - Automatic cleanup and disposal of unused resources
+- **Dependency Management**:
+  - Careful management of hook dependencies to prevent unnecessary rerenders
+  - Stable function references for callback dependencies
+  - Clear documentation of dependency decisions
+
+```
+┌─────────────┐
+│ Experience  │
+│   Context   │
+└─────┬─────┬─┘
+      │     │
+ ┌────▼─┐ ┌─▼────────────┐
+ │Video │ │   Location   │
+ │Hooks │ │     Hooks    │
+ └────┬─┘ └─────┬────────┘
+      │         │
+┌─────▼─────────▼──────┐
+│      dataLayer       │
+│   (Data Access)      │
+└──────────────────────┘
+```
 
 ### Video Sequence Pattern
 
@@ -136,11 +184,64 @@ Key relationships between models:
 
 - **Frontend**: ErrorBoundary components for React component errors
 - **Backend**: Consistent error response format
+- **Hooks**: Standardized try/catch patterns with contextual error messages
+- **Recovery Strategy**: Graceful degradation with fallbacks when possible
 
 ### Loading States
 
 - Component-level loading states with visual indicators
 - Global loading state for major transitions
+- Progress tracking for resource loading
+- Timeout handling for long-running operations
+
+### Data Layer Patterns
+
+- **Client-side API Communication**: Centralized through dataLayer.js utility
+
+  - Request deduplication to prevent multiple in-flight requests for the same data
+  - Time-based cache expiration (5-minute default)
+  - Size-limited caching (50 entries per endpoint type)
+  - Standardized async/await pattern throughout
+  - Modular search strategies for complex operations (e.g., transition videos)
+  - Consistent error handling and logging
+  - Explicit cache clearing API
+
+- **Data Flow**:
+  ```
+  ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+  │  Components   │     │   dataLayer   │     │     API       │
+  │   & Hooks     │────▶│  (Utilities)  │────▶│   Endpoints   │
+  └───────────────┘     └───────┬───────┘     └───────────────┘
+                                │
+                                ▼
+                        ┌───────────────┐
+                        │  Local Cache  │
+                        │ (Time-based)  │
+                        └───────────────┘
+  ```
+
+### Logging Strategy
+
+- **Environment-aware Logging**: Implemented through logger.js utility
+  - Log level filtering based on environment (development vs. production)
+  - Enhanced log spam prevention with deterministic cache cleanup
+  - Size-limited log cache (100 entries maximum)
+  - Consistent log formatting with module context
+  - Four priority levels: DEBUG, INFO, WARN, and ERROR
+  - Log grouping functionality for related messages
+- **Logging Pattern**:
+  ```
+  ┌───────────────┐                 ┌───────────────┐
+  │  Development  │                 │  Production   │
+  │  Environment  │                 │  Environment  │
+  └───────┬───────┘                 └───────┬───────┘
+          │                                 │
+          ▼                                 ▼
+  ┌───────────────┐                 ┌───────────────┐
+  │ DEBUG + INFO  │                 │ INFO + WARN   │
+  │ + WARN + ERROR│                 │ + ERROR only  │
+  └───────────────┘                 └───────────────┘
+  ```
 
 ### Code Organization
 

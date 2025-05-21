@@ -1,7 +1,11 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import useServiceWorker from '../hooks/useServiceWorker';
 import useLocationManagement from '../hooks/useLocationManagement';
 import useVideoPreloader from '../hooks/useVideoPreloader';
+import logger from '../utils/logger';
+
+// Module name for logging
+const MODULE = 'ExperienceContext';
 
 // Create context
 const ExperienceContext = createContext();
@@ -20,6 +24,8 @@ export const useExperience = () => {
  * Handles video caching, preloading, and state transitions
  */
 export const ExperienceProvider = ({ children }) => {
+  logger.debug(MODULE, 'Initializing ExperienceProvider');
+  
   // Loading state
   const [isLoading, setIsLoading] = useState(true);
   
@@ -28,36 +34,65 @@ export const ExperienceProvider = ({ children }) => {
   const locationManager = useLocationManagement(setIsLoading);
   const videoPreloader = useVideoPreloader(setIsLoading);
   
-  // Enhanced preload function combining multiple hooks - memoized to prevent recreation
+  // Store stable references to functions we need in dependency arrays
+  const { serviceWorkerReady } = serviceWorker;
+  const { loadLocations } = locationManager;
+  const { 
+    preloadAllLocationsVideos,
+    videoPreloaderRef
+  } = videoPreloader;
+  
+  // Enhanced preload function combining multiple hooks
   const preloadAllVideos = useCallback(async () => {
+    logger.info(MODULE, 'Starting preload of all videos');
+    
     // First load the locations data
-    const locationsData = await locationManager.loadLocations();
+    const locationsData = await loadLocations();
     
     // Then pass the data directly to the preloader
-    return await videoPreloader.preloadAllLocationsVideos(
-      serviceWorker.serviceWorkerReady,
-      locationsData
-    );
-  // We're only including the specific methods/properties that are used, not the entire objects.
-  // Including the entire objects would cause unnecessary re-creation of this function on every render
-  // because the objects (locationManager, videoPreloader) are recreated on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoPreloader.preloadAllLocationsVideos, serviceWorker.serviceWorkerReady, locationManager.loadLocations]);
+    const result = await preloadAllLocationsVideos(serviceWorkerReady, locationsData);
+    
+    logger.info(MODULE, `Preload complete. Loaded ${result.loaded}/${result.total} videos`);
+    return result;
+  }, [loadLocations, preloadAllLocationsVideos, serviceWorkerReady]);
   
-  // Enhanced load location function - memoized to prevent recreation
+  // Enhanced load location function
   const loadLocation = useCallback(async (locationId) => {
-    return await locationManager.loadLocation(
+    logger.info(MODULE, `Loading location: ${locationId}`);
+    
+    if (!locationId) {
+      logger.error(MODULE, 'Cannot load location: locationId is required');
+      return null;
+    }
+    
+    const videoPreloader = videoPreloaderRef.current;
+    const result = await locationManager.loadLocation(
       locationId, 
-      videoPreloader.videoPreloaderRef.current,
-      serviceWorker.serviceWorkerReady
+      videoPreloader,
+      serviceWorkerReady
     );
-  // We're only including the specific methods/properties that are used, not the entire objects.
-  // Including the entire objects would cause unnecessary re-creation of this function on every render
-  // because the objects (locationManager, videoPreloader) are recreated on each render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationManager.loadLocation, videoPreloader.videoPreloaderRef, serviceWorker.serviceWorkerReady]);
+    
+    if (result) {
+      logger.info(MODULE, `Location loaded successfully: ${locationId}`);
+    } else {
+      logger.error(MODULE, `Failed to load location: ${locationId}`);
+    }
+    
+    return result;
+  }, [locationManager, videoPreloaderRef, serviceWorkerReady]);
 
-  // Value to be provided by the context - memoized to prevent recreation on every render
+  // Log when key dependencies change
+  useEffect(() => {
+    logger.debug(MODULE, `Service worker ready: ${serviceWorkerReady}`);
+  }, [serviceWorkerReady]);
+  
+  useEffect(() => {
+    if (locationManager.locations.length > 0) {
+      logger.debug(MODULE, `Locations loaded: ${locationManager.locations.length}`);
+    }
+  }, [locationManager.locations]);
+
+  // Value to be provided by the context
   const value = {
     // Loading state
     isLoading,

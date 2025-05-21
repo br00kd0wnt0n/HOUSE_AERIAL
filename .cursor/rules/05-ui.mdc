@@ -1,0 +1,64 @@
+---
+description: 
+globs: *.jsx,*.tsx
+alwaysApply: false
+---
+Here's a set of rules for UI development to keep in mind when working with this codebase:
+
+# UI Development Rules
+
+## Component Architecture
+- Keep components under 300 lines of code - split larger components into smaller ones
+- Follow the Single Responsibility Principle - each component should do one thing well
+- Create reusable components for repeated UI patterns
+- Use composition over inheritance when designing component relationships
+
+## State Management
+- Use useState for simple state, useReducer for complex state with related pieces
+- Keep state as local as possible - only lift state when absolutely necessary
+- Avoid redundant state that can be derived from existing state
+- Implement proper loading, error, and empty states for all data-dependent components
+
+## Performance Optimization
+- Use React.memo for pure components that render often with the same props
+- Apply useCallback only for functions passed to memoized child components
+- Leverage useMemo for expensive calculations that may rerun on every render
+- Avoid anonymous functions in render that create new references on each render
+
+## Event Handling
+- Implement proper cleanup for event listeners in useEffect
+- Use proper accessibility attributes for interactive elements
+- Debounce or throttle expensive event handlers (resize, scroll, input)
+- Prefer controlled components over uncontrolled when managing form state
+
+## Styling Practices
+- Use Tailwind CSS utility classes with the cn() utility for conditional classes
+- Follow mobile-first responsive design approach
+- Maintain consistent spacing, typography, and color usage across components
+- Avoid inline styles except for dynamic values that can't be handled with classes
+
+## Error Handling
+- Wrap data-dependent components with ErrorBoundary
+- Provide user-friendly error messages
+- Implement fallback UI for error states
+- Log errors for debugging but present user-friendly messages in the UI
+
+## Testing Considerations
+- Write components with testability in mind
+- Keep rendering logic separate from business logic
+- Use data-testid attributes for test selectors
+- Consider accessibility during development, not as an afterthought
+
+## Code Organization
+- Group related components in dedicated folders
+- Use index files to simplify imports
+- Colocate tests with components
+- Maintain consistent file naming conventions
+
+## Rendering Optimization
+- Avoid layout thrashing by batching DOM reads and writes
+- Use CSS transitions instead of JavaScript for animations when possible
+- Implement virtualization for long lists
+- Lazy load components and assets that aren't immediately visible
+
+By adhering to these rules, we'll create a more maintainable, performant, and user-friendly UI experience.

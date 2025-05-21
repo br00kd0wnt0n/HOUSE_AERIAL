@@ -1,0 +1,166 @@
+/* DebugStyles.css */
+/* Debug-specific styles for Hotspot components */
+/* This file should only be imported in development mode or when debug mode is active */
+
+@import "./HotspotVariables.css";
+
+/* Debug polygon visibility */
+.debug-visible.hotspot-polygon {
+  opacity: var(--hotspot-debug-opacity) !important;
+  stroke-width: calc(var(--hotspot-stroke-width) * 1.5) !important;
+  fill: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-fill-opacity-base)
+  ) !important;
+  stroke: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-stroke-opacity-base)
+  ) !important;
+}
+
+/* Make hotspot polygons visible in debug mode */
+.debug-mode .hotspot-polygon {
+  opacity: var(--hotspot-debug-opacity);
+  /* Ensure polygons are visible in debug mode */
+  fill: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-fill-opacity-base)
+  );
+  stroke: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-stroke-opacity-base)
+  );
+}
+
+/* Type-specific styles for debug mode */
+.debug-mode .primary-polygon {
+  fill: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-fill-opacity-base)
+  );
+  stroke: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-stroke-opacity-base)
+  );
+}
+
+.debug-mode .secondary-polygon {
+  fill: rgba(
+    var(--hotspot-secondary-color-rgb),
+    var(--hotspot-fill-opacity-base)
+  );
+  stroke: rgba(
+    var(--hotspot-secondary-color-rgb),
+    var(--hotspot-stroke-opacity-base)
+  );
+}
+
+/* Debug wrapper styles */
+.debug-visible.hotspot-wrapper {
+  background-color: rgba(
+    var(--hotspot-primary-color-rgb),
+    var(--hotspot-fill-opacity-base)
+  );
+  border-radius: 50%;
+  border: 2px solid var(--hotspot-text-color);
+  width: var(--hotspot-marker-size);
+  height: var(--hotspot-marker-size);
+}
+
+/* Hotspot debug marker */
+.debug-hotspot-marker {
+  position: absolute;
+  width: var(--hotspot-marker-size);
+  height: var(--hotspot-marker-size);
+  background-color: rgba(var(--hotspot-warning-color-rgb), 0.7);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+}
+
+/* Hotspot name label */
+.debug-hotspot-name {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(var(--hotspot-background-color-rgb), 0.7);
+  padding: 2px 5px;
+  border-radius: var(--hotspot-debug-border-radius);
+  font-size: var(--hotspot-debug-label-font-size);
+  pointer-events: none;
+  color: var(--hotspot-text-color);
+}
+
+/* Debug panel */
+.debug-panel {
+  position: absolute;
+  top: var(--hotspot-debug-padding);
+  left: var(--hotspot-debug-padding);
+  z-index: 50;
+  background-color: rgba(
+    var(--hotspot-background-color-rgb),
+    var(--hotspot-debug-background-opacity)
+  );
+  color: var(--hotspot-text-color);
+  padding: var(--hotspot-debug-padding);
+  border-radius: var(--hotspot-debug-border-radius);
+  max-width: var(--hotspot-debug-panel-max-width);
+  max-height: 80vh;
+  overflow: auto;
+  font-size: var(--hotspot-debug-font-size);
+  font-family: monospace;
+  box-shadow: var(--hotspot-debug-shadow);
+}
+
+.debug-panel h3 {
+  margin: 0 0 var(--hotspot-debug-margin) 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: var(--hotspot-debug-title-font-size);
+  text-align: center;
+}
+
+.debug-panel ul {
+  margin: 4px 0;
+  padding-left: 15px;
+  list-style-type: square;
+}
+
+.debug-panel .warning {
+  padding: 5px;
+  background-color: rgba(var(--hotspot-warning-color-rgb), 0.5);
+  margin-bottom: var(--hotspot-debug-margin);
+  border-radius: var(--hotspot-debug-border-radius);
+}
+
+.debug-panel .section {
+  margin-bottom: 12px;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.2);
+  padding-bottom: var(--hotspot-debug-margin);
+}
+
+.debug-panel .section:last-child {
+  border-bottom: none;
+}
+
+.debug-panel .section strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--hotspot-highlight-color);
+}
+
+.debug-panel .keyboard-hint {
+  font-size: 11px;
+  margin-top: var(--hotspot-debug-margin);
+  opacity: 0.7;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 4px;
+  border-radius: var(--hotspot-debug-border-radius);
+}
+
+/* Word wrap for long URLs or cache names */
+.debug-panel li {
+  word-break: break-word;
+}
