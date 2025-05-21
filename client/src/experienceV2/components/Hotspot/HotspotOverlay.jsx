@@ -7,7 +7,7 @@ import logger from '../../utils/logger';
  * HotspotOverlay.jsx - Component for rendering hotspots in the V2 experience
  * Uses a fixed coordinate system to match hotspot positions from the admin panel
  */
-const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
+const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externalDebugMode }) => {
   // Module name for logging
   const MODULE = 'HotspotOverlay';
   
@@ -23,8 +23,17 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
   const updateInProgressRef = useRef(false);
   // Ref to track if component is mounted
   const isMountedRef = useRef(true);
-  // Debug mode state
-  const [debugMode, setDebugMode] = useState(true); // Enable by default for testing
+  // Internal debug mode state - can be overridden by prop
+  const [internalDebugMode, setInternalDebugMode] = useState(false);
+  // State to track caching info
+  const [cacheInfo, setCacheInfo] = useState({
+    serviceWorkerActive: false,
+    cachedResources: 0,
+    cacheNames: []
+  });
+  
+  // Combine internal and external debug modes - either can enable it
+  const debugMode = externalDebugMode || internalDebugMode;
 
   // Set mounted flag on component mount/unmount
   useEffect(() => {
@@ -33,9 +42,9 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
     // Debug keyboard shortcut (Ctrl+Shift+D)
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        setDebugMode(prev => {
+        setInternalDebugMode(prev => {
           const newValue = !prev;
-          logger.info(MODULE, `Debug mode ${newValue ? 'enabled' : 'disabled'}`);
+          logger.info(MODULE, `Debug mode ${newValue ? 'enabled' : 'disabled'} (internal)`);
           return newValue;
         });
         e.preventDefault();
@@ -43,13 +52,56 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
     };
     
     window.addEventListener('keydown', handleKeyDown);
-    logger.info(MODULE, 'Debug mode is ON by default for testing. Press Ctrl+Shift+D to toggle.');
+    
+    // Only log in development mode
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info(MODULE, 'Debug mode shortcuts are available with Ctrl+Shift+D');
+    }
     
     return () => {
       isMountedRef.current = false;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  // Function to fetch caching information when debug mode is enabled
+  useEffect(() => {
+    if (debugMode && 'serviceWorker' in navigator && 'caches' in window) {
+      // Check for active service worker
+      navigator.serviceWorker.getRegistration().then(registration => {
+        const isActive = !!registration && !!registration.active;
+        setCacheInfo(prev => ({ ...prev, serviceWorkerActive: isActive }));
+        
+        if (isActive) {
+          logger.debug(MODULE, 'Service worker is active');
+        }
+      }).catch(err => {
+        logger.error(MODULE, 'Error checking service worker status:', err);
+      });
+      
+      // Get cache names
+      caches.keys().then(cacheNames => {
+        setCacheInfo(prev => ({ ...prev, cacheNames }));
+        
+        // For each cache, count entries
+        let totalCachedResources = 0;
+        const promises = cacheNames.map(name => 
+          caches.open(name).then(cache => 
+            cache.keys().then(keys => {
+              totalCachedResources += keys.length;
+              return keys.length;
+            })
+          )
+        );
+        
+        Promise.all(promises).then(() => {
+          setCacheInfo(prev => ({ ...prev, cachedResources: totalCachedResources }));
+        });
+      }).catch(err => {
+        logger.error(MODULE, 'Error retrieving cache information:', err);
+      });
+    }
+  }, [debugMode]);
 
   // Function to check if we have a valid video element
   const checkVideoElement = useCallback(() => {
@@ -179,16 +231,56 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
     // Create a reference to the debounced function
     const updateDimensions = debouncedUpdateSvgDimensions();
     
+    // Track if we've already applied fallback dimensions to avoid redundant messages
+    let fallbackApplied = false;
+    
     // Initial update with delay to ensure DOM is ready
     const initialTimeout = setTimeout(() => {
       if (isMountedRef.current) {
         updateDimensions();
+        
+        // Only log this once, not on every render
+        if (process.env.NODE_ENV !== 'production') {
+          logger.info(MODULE, `Running initial dimensions update (delayed)`);
+        }
+        
+        // FALLBACK: If after 1 second we still don't have dimensions, force some reasonable values
+        setTimeout(() => {
+          if (isMountedRef.current && (!displayArea.width || displayArea.width === 0) && !fallbackApplied) {
+            fallbackApplied = true;
+            logger.warn(MODULE, `Dimensions still not set after delay. Forcing fallback dimensions.`);
+            
+            // Force some reasonable dimensions based on the video element
+            const videoEl = checkVideoElement();
+            if (videoEl) {
+              const videoRect = videoEl.getBoundingClientRect();
+              if (videoRect.width > 0 && videoRect.height > 0) {
+                setDisplayArea({
+                  width: videoRect.width,
+                  height: videoRect.height,
+                  offsetX: 0,
+                  offsetY: 0,
+                  containerWidth: videoRect.width,
+                  containerHeight: videoRect.height,
+                  isFallback: true
+                });
+                
+                setSvgViewBox('0 0 100 100');
+                logger.info(MODULE, `Applied fallback dimensions: ${videoRect.width}x${videoRect.height}`);
+              }
+            }
+          }
+        }, 1000);
       }
     }, 200);
     
     // Update when video ref changes
     if (videoRef?.current) {
       updateDimensions();
+      // Only log in development, not in production
+      if (process.env.NODE_ENV !== 'production') {
+        logger.debug(MODULE, 'Updating dimensions from new video ref');
+      }
     }
     
     // Set up event listeners for changes
@@ -229,16 +321,30 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
       window.removeEventListener('resize', updateDimensions);
       clearTimeout(initialTimeout);
     };
-  }, [videoRef, hotspots, debouncedUpdateSvgDimensions]);
+  }, [videoRef, hotspots, debouncedUpdateSvgDimensions, checkVideoElement, displayArea.width]);
 
   // Helper function to create polygon points for SVG
   const createSvgPoints = (coordinates) => {
     if (!coordinates || coordinates.length < 3) return '';
     
-    // Since SVG viewBox is 0 0 100 100, convert normalized coords to percentages
+    // Convert normalized coordinates to percentage values for SVG
     return coordinates.map(coord => `${coord.x * 100},${coord.y * 100}`).join(' ');
   };
-  
+
+  // Get the polygon class based on hotspot type
+  const getHotspotPolygonClass = (hotspot) => {
+    const baseClass = 'hotspot-polygon';
+    
+    // Add type-specific class
+    if (hotspot.type === 'PRIMARY') {
+      return `${baseClass} primary-polygon`;
+    } else if (hotspot.type === 'SECONDARY') {
+      return `${baseClass} secondary-polygon`;
+    }
+    
+    return baseClass;
+  };
+
   // Helper to calculate hotspot position adjusting for letterboxing
   const getHotspotPosition = (hotspot) => {
     if (!displayArea.width || !displayArea.height) {
@@ -286,62 +392,87 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
     };
   };
 
+  // Count hotspots by type
+  const getHotspotCounts = () => {
+    const counts = {
+      total: hotspots?.length || 0,
+      primary: 0,
+      secondary: 0,
+      other: 0,
+      validPolygons: 0
+    };
+
+    if (hotspots && hotspots.length > 0) {
+      hotspots.forEach(hotspot => {
+        if (hotspot.type === 'PRIMARY') counts.primary++;
+        else if (hotspot.type === 'SECONDARY') counts.secondary++;
+        else counts.other++;
+
+        if (hotspot.coordinates && Array.isArray(hotspot.coordinates) && hotspot.coordinates.length >= 3) {
+          counts.validPolygons++;
+        }
+      });
+    }
+
+    return counts;
+  };
+
+  // Format a number to 2 decimal places
+  const formatNumber = (num) => {
+    return typeof num === 'number' ? Math.round(num * 100) / 100 : 'N/A';
+  };
+
   // Don't render anything if no hotspots or video not ready
-  if (!hotspots || hotspots.length === 0 || !displayArea.width) {
-    logger.debug(MODULE, `Not rendering hotspots: ${!hotspots ? 'no hotspots array' : hotspots.length === 0 ? 'empty hotspots array' : 'no display area'}`);
+  if (!hotspots || hotspots.length === 0) {
+    logger.debug(MODULE, `Not rendering hotspots: ${!hotspots ? 'no hotspots array' : 'empty hotspots array'}`);
     return null;
   }
   
-  // Log hotspots when in debug mode
-  if (debugMode) {
+  // Show warning if dimensions aren't set but we have hotspots
+  if ((hotspots?.length > 0) && (!displayArea.width || !displayArea.height)) {
+    logger.warn(MODULE, 'Display area dimensions not set, but attempting to render hotspots anyway');
+  }
+  
+  // Log hotspots when in debug mode - but only in development
+  if (debugMode && process.env.NODE_ENV !== 'production') {
     console.log('Hotspots data:', hotspots);
-    logger.info(MODULE, `Rendering ${hotspots.length} hotspots with debug mode ON`);
+    logger.debug(MODULE, `Rendering ${hotspots.length} hotspots with debug mode ON`);
   }
   
-  // Count valid hotspots
-  const validPolygonHotspots = hotspots.filter(h => 
-    h.coordinates && 
-    Array.isArray(h.coordinates) && 
-    h.coordinates.length >= 3
-  );
-  
-  if (validPolygonHotspots.length !== hotspots.length) {
-    logger.warn(MODULE, `Only ${validPolygonHotspots.length} of ${hotspots.length} hotspots have valid polygons`);
-  }
+  // Get hotspot counts for debug info
+  const hotspotCounts = getHotspotCounts();
   
   return (
-    <div className="hotspot-overlay">
+    <div className="hotspot-overlay" tabIndex={0}>
       {/* SVG layer for polygon hotspots */}
       <svg 
-        className="hotspot-svg" 
+        className={`hotspot-svg ${debugMode ? 'debug-mode' : ''}`}
         viewBox={svgViewBox} 
         preserveAspectRatio="none"
         ref={svgRef}
         style={{
-          // Ensure the SVG matches the exact dimensions and position of the video
+          // Set the size and position based on calculated display area
           position: 'absolute',
           top: `${displayArea.offsetY}px`,
           left: `${displayArea.offsetX}px`,
           width: `${displayArea.width}px`,
           height: `${displayArea.height}px`,
-          pointerEvents: 'none'
+          pointerEvents: 'none', // Allow click through to videoRef element
+          zIndex: 10 // Above video but below UI
         }}
       >
-        {/* Render SVG polygons for hotspots */}
-        {hotspots.map(hotspot => 
-          hotspot.coordinates && hotspot.coordinates.length >= 3 ? (
-            <polygon 
-              key={`poly-${hotspot._id}`}
-              className={cn(
-                "hotspot-polygon", 
-                `${hotspot.type.toLowerCase()}-polygon`,
-                { "debug-visible": debugMode }
-              )}
-              points={createSvgPoints(hotspot.coordinates)}
-              onClick={() => onHotspotClick(hotspot)}
-            />
-          ) : null
-        )}
+        {/* Render polygons for each hotspot */}
+        {hotspots.filter(hotspot => hotspot.coordinates && hotspot.coordinates.length >= 3).map(hotspot => (
+          <polygon 
+            key={`hotspot-${hotspot._id}`}
+            className={getHotspotPolygonClass(hotspot)}
+            points={createSvgPoints(hotspot.coordinates)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onHotspotClick(hotspot);
+            }}
+          />
+        ))}
       </svg>
       
       {/* Map pins and hotspots */}
@@ -369,12 +500,73 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef }) => {
         );
       })}
       
-      {/* Debug panel */}
+      {/* Enhanced Debug panel positioned at bottom right */}
       {debugMode && (
         <div className="debug-panel">
           <h3>Debug Info</h3>
-          <p>Hotspots: {hotspots.length}</p>
-          <p>Press Ctrl+Shift+D to toggle debug mode</p>
+          
+          {/* Warning if dimensions aren't set */}
+          {!displayArea.width && (
+            <div className="warning">
+              <strong>⚠️ Warning:</strong> Display area dimensions not set!
+            </div>
+          )}
+          
+          {/* Hotspot info section */}
+          <div className="section">
+            <strong>Hotspots:</strong>
+            <ul>
+              <li>Total: {hotspotCounts.total}</li>
+              <li>Primary: {hotspotCounts.primary}</li>
+              <li>Secondary: {hotspotCounts.secondary}</li>
+              <li>Other: {hotspotCounts.other}</li>
+              <li>Valid Polygons: {hotspotCounts.validPolygons}</li>
+            </ul>
+          </div>
+          
+          {/* Video info section */}
+          <div className="section">
+            <strong>Video Dimensions:</strong>
+            <ul>
+              <li>Display: {formatNumber(videoDimensions.width)}×{formatNumber(videoDimensions.height)}</li>
+              <li>Natural: {formatNumber(videoDimensions.naturalWidth)}×{formatNumber(videoDimensions.naturalHeight)}</li>
+              <li>Aspect: {formatNumber(videoDimensions.aspectRatio)} (display), {formatNumber(videoDimensions.naturalAspect)} (natural)</li>
+            </ul>
+          </div>
+          
+          {/* Display area info */}
+          <div className="section">
+            <strong>Display Area:</strong>
+            <ul>
+              <li>Size: {formatNumber(displayArea.width)}×{formatNumber(displayArea.height)}</li>
+              <li>Offset: ({formatNumber(displayArea.offsetX)}, {formatNumber(displayArea.offsetY)})</li>
+              <li>Container: {formatNumber(displayArea.containerWidth)}×{formatNumber(displayArea.containerHeight)}</li>
+              <li>Fallback: {displayArea.isFallback ? 'Yes' : 'No'}</li>
+            </ul>
+          </div>
+          
+          {/* SVG info */}
+          <div className="section">
+            <strong>SVG Info:</strong>
+            <ul>
+              <li>ViewBox: {svgViewBox}</li>
+            </ul>
+          </div>
+          
+          {/* Cache info */}
+          <div className="section">
+            <strong>Caching Info:</strong>
+            <ul>
+              <li>Service Worker: {cacheInfo.serviceWorkerActive ? 'Active' : 'Inactive'}</li>
+              <li>Cache Storage: {cacheInfo.cachedResources} items</li>
+              <li>Cache Names: {cacheInfo.cacheNames.length > 0 ? 
+                cacheInfo.cacheNames.join(', ') : 'None found'}</li>
+            </ul>
+          </div>
+          
+          <div className="keyboard-hint">
+            Press Ctrl+Shift+D to toggle debug mode
+          </div>
         </div>
       )}
     </div>

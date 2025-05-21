@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useExperience } from '../context/ExperienceContext';
 import VideoPlayer from '../components/VideoPlayer/VideoPlayer';
 import HotspotOverlay from '../components/Hotspot/HotspotOverlay';
+import InfoPanel from '../components/Hotspot/InfoPanel';
 import LoadingScreen from '../components/LoadingScreen/LoadingScreen';
 import VideoStateManager from '../utils/VideoStateManager';
 import logger from '../utils/logger';
@@ -11,7 +12,7 @@ import dataLayer from '../utils/dataLayer';
 /**
  * Experience.jsx - Main experience view for a selected location
  * Handles displaying videos, hotspots, and transitions with offline capability
- * Phase 2: Adds interactive hotspot playlist playback
+ * Phase 2: Adds interactive hotspot playlist playback and secondary hotspot modals
  */
 const Experience = () => {
   // Module name for logging
@@ -26,7 +27,6 @@ const Experience = () => {
     locations,
     isLoading: globalLoading, 
     serviceWorkerReady,
-    offlineMode,
     videoPreloaderRef
   } = useExperience();
   
@@ -35,11 +35,17 @@ const Experience = () => {
   const [isVideoLoading, setIsVideoLoading] = useState(true);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
-  const [usesServiceWorker, setUsesServiceWorker] = useState(false);
+  const [, setUsesServiceWorker] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false); // Start paused to avoid autoplay issues
   const [hotspots, setHotspots] = useState([]);
   const [inPlaylistMode, setInPlaylistMode] = useState(false);
-  const [activeHotspot, setActiveHotspot] = useState(null);
+  // eslint-disable-next-line no-unused-vars
+  const [activeHotspot, setActiveHotspot] = useState(null); // Used for both PRIMARY and SECONDARY hotspots
+  // Separate state for tracking PRIMARY hotspot sequences vs SECONDARY hotspot modals
+  const [activePrimaryHotspot, setActivePrimaryHotspot] = useState(null);
+  const [activeSecondaryHotspot, setActiveSecondaryHotspot] = useState(null);
+  // Debug mode state
+  const [debugMode, setDebugMode] = useState(false);
   
   // Reference to the video element
   const videoRef = useRef(null);
@@ -61,7 +67,57 @@ const Experience = () => {
     const handleLoadVideo = (video) => {
       logger.info(MODULE, `Loading video: ${video.type} - ${video.id}`);
       
-      // Get the video URL from the preloader if available
+      // Special case for aerial_return - find the cached aerial video URL
+      if (video.id === 'aerial_return') {
+        logger.info(MODULE, 'Handling special aerial_return request');
+        
+        // Try to find the proper aerial video URL using multiple possible IDs
+        const possibleAerialIds = [
+          `aerial_${locationId}_api`,      // From API
+          `aerial_${locationId}_direct`,   // Direct match
+          `aerial_${locationId}`,          // Simple format
+          `aerial_fallback`                // Fallback
+        ];
+        
+        // Try each ID pattern
+        let foundAerialUrl = null;
+        
+        for (const id of possibleAerialIds) {
+          if (videoPreloaderRef.current) {
+            const url = videoPreloaderRef.current.getVideoUrl(id);
+            if (url) {
+              logger.info(MODULE, `Found aerial URL for ID: ${id}`);
+              foundAerialUrl = url;
+              break;
+            }
+          }
+        }
+        
+        if (foundAerialUrl) {
+          logger.info(MODULE, `Setting aerial return URL: ${foundAerialUrl.substring(0, 50)}...`);
+          setVideoUrl(foundAerialUrl);
+          return;
+        } else {
+          logger.warn(MODULE, 'Could not find aerial URL, using fallback methods');
+          // If no aerial video found in preloader, try to reload the original URL
+          // Using void operator to explicitly indicate we're ignoring the promise result
+          void dataLayer.getAssetsByType('AERIAL', locationId)
+            .then(assets => {
+              if (assets && assets.length > 0 && assets[0].accessUrl) {
+                logger.info(MODULE, 'Found aerial asset from API');
+                setVideoUrl(assets[0].accessUrl);
+              }
+            })
+            .catch(err => {
+              logger.error(MODULE, 'Error loading aerial asset:', err);
+            });
+          
+          // Don't wait for promise to complete
+          return;
+        }
+      }
+      
+      // Normal case - get the video URL from the preloader if available
       let url = null;
       
       if (videoPreloaderRef.current) {
@@ -97,7 +153,7 @@ const Experience = () => {
       // Reset state when unmounting
       videoStateManagerRef.current = null;
     };
-  }, [videoPreloaderRef]);
+  }, [videoPreloaderRef, locationId]);
   
   // Handle user interaction to enable autoplay
   useEffect(() => {
@@ -349,6 +405,31 @@ const Experience = () => {
     }
   }, [locations, locationId]);
   
+  // Reset aerial video state when returning from a PRIMARY hotspot sequence
+  useEffect(() => {
+    // Check if we've just transitioned back to aerial view from a PRIMARY hotspot sequence
+    if (currentVideo === 'aerial' && !inPlaylistMode && activePrimaryHotspot === null && assetLoadedRef.current) {
+      logger.info(MODULE, 'Detected return to aerial view, reloading aerial video');
+      
+      // Instead of immediately reloading, we need to make sure our state is cleared properly
+      // Set a short timeout to ensure state has settled
+      setTimeout(() => {
+        // Only reload aerial asset if we're still in aerial view
+        if (currentVideo === 'aerial' && videoRef.current) {
+          logger.info(MODULE, 'Reloading aerial video from cache');
+          
+          // If video element exists, force a reload
+          if (videoRef.current.currentTime !== 0) {
+            videoRef.current.currentTime = 0;
+            videoRef.current.play().catch(err => {
+              logger.error(MODULE, 'Error playing aerial video after reset:', err);
+            });
+          }
+        }
+      }, 50);
+    }
+  }, [currentVideo, inPlaylistMode, activePrimaryHotspot]);
+  
   // Update inPlaylistMode and activeHotspot when the video state manager changes
   useEffect(() => {
     // Skip if not initialized
@@ -360,26 +441,103 @@ const Experience = () => {
     // Check and update the active hotspot
     const hotspot = videoStateManagerRef.current.getCurrentHotspot();
     if (hotspot) {
+      // Only update the PRIMARY hotspot tracking
+      setActivePrimaryHotspot(hotspot);
       setActiveHotspot(hotspot);
     } else {
-      setActiveHotspot(null);
+      setActivePrimaryHotspot(null);
+      // Don't clear activeHotspot here as it might be a SECONDARY hotspot
+      if (inPlaylistMode) {
+        setActiveHotspot(null);
+      }
     }
-  }, [currentVideo]);
+  }, [currentVideo, inPlaylistMode]);
   
   // Handle video end event
   const handleVideoEnded = useCallback((videoType) => {
     logger.debug(MODULE, `Video ended: ${videoType}`);
     
+    // Detect zoom-out videos
+    const isZoomOut = videoType.startsWith('zoomOut');
+    
     // Pass control to the video state manager
     if (videoStateManagerRef.current) {
-      videoStateManagerRef.current.handleVideoEnded(videoType);
+      // If this is a zoom-out video, ensure we properly transition back to aerial
+      if (isZoomOut) {
+        logger.info(MODULE, 'Zoom-out video ended, ensuring proper transition to aerial');
+        
+        // Tell the state manager this video has ended
+        videoStateManagerRef.current.handleVideoEnded(videoType);
+        
+        // Additional safety check - force aerial state if needed
+        if (videoStateManagerRef.current.getCurrentState() !== 'aerial') {
+          logger.warn(MODULE, 'Forcing transition to aerial state');
+          videoStateManagerRef.current.resetPlaylist();
+          videoStateManagerRef.current.changeState('aerial');
+        }
+        
+        // Force reload of aerial video if we have a valid URL
+        // Try multiple ID patterns since the aerial video might be cached with different IDs
+        const possibleAerialIds = [
+          `aerial_${locationId}_api`,      // From API
+          `aerial_${locationId}_direct`,   // Direct match
+          `aerial_${locationId}`,          // Simple format
+          `aerial_fallback`                // Fallback
+        ];
+        
+        // Try to find the URL using the possible IDs
+        let aerialUrl = null;
+        for (const id of possibleAerialIds) {
+          const url = videoPreloaderRef.current?.getVideoUrl(id);
+          if (url) {
+            logger.info(MODULE, `Found aerial URL for ID: ${id}`);
+            aerialUrl = url;
+            break;
+          }
+        }
+        
+        // If we found a URL, update the video source
+        if (aerialUrl) {
+          logger.info(MODULE, `Forcing reload of aerial video URL: ${aerialUrl.substring(0, 50)}...`);
+          setVideoUrl(aerialUrl);
+        } else {
+          logger.warn(MODULE, 'Could not find aerial video URL in preloader, trying alternate methods');
+          
+          // Fallback: Try to find the URL in the locations data
+          const locationAerialAssets = locations.filter(loc => loc._id === locationId)
+            .flatMap(loc => {
+              // If the location has an aerial asset, use it
+              if (loc.aerialAsset && loc.aerialAsset.accessUrl) {
+                return [loc.aerialAsset.accessUrl];
+              }
+              return [];
+            });
+          
+          if (locationAerialAssets.length > 0) {
+            logger.info(MODULE, 'Using aerial URL from location data');
+            setVideoUrl(locationAerialAssets[0]);
+          } else {
+            // Last resort: Force a reload of the current video element
+            logger.warn(MODULE, 'No aerial URL found, forcing video element reload');
+            if (videoRef.current) {
+              // Try to reset the video element completely
+              videoRef.current.pause();
+              videoRef.current.currentTime = 0;
+              videoRef.current.load();
+            }
+          }
+        }
+      } else {
+        // For other video types, just notify the state manager
+        videoStateManagerRef.current.handleVideoEnded(videoType);
+      }
     } else {
       // Fallback if manager not available
       if (videoType !== 'aerial') {
         setCurrentVideo('aerial');
       }
     }
-  }, [videoStateManagerRef]);
+  }, [videoStateManagerRef, locationId, locations, videoPreloaderRef]);
   
   // Handle video load start
   const handleVideoLoadStart = useCallback((videoType) => {
@@ -403,38 +561,116 @@ const Experience = () => {
     setIsPlaying(true);
   }, []);
   
-  // Handle hotspot click - now with playlist functionality
+  // Handle hotspot click with separate handling for PRIMARY and SECONDARY hotspots
   const handleHotspotClick = useCallback(async (hotspot) => {
-    logger.info(MODULE, `Hotspot clicked: ${hotspot.name} (${hotspot._id})`);
-    
-    // Skip if video state manager not initialized
-    if (!videoStateManagerRef.current) {
-      logger.error(MODULE, 'Cannot handle hotspot click: video state manager not initialized');
+    // If hotspot is null (called from InfoPanel close), just clear the active secondary hotspot
+    if (!hotspot) {
+      setActiveSecondaryHotspot(null);
+      // Only clear the main activeHotspot if there's no active PRIMARY hotspot
+      if (!activePrimaryHotspot) {
+        setActiveHotspot(null);
+      }
       return;
     }
     
-    try {
-      // Fetch the playlist for this hotspot
-      logger.info(MODULE, `Fetching playlist for hotspot: ${hotspot._id}`);
-      const playlist = await dataLayer.getPlaylistByHotspot(hotspot._id);
+    logger.info(MODULE, `Hotspot clicked: ${hotspot.name} (${hotspot._id}) - Type: ${hotspot.type}`);
+    
+    // Handle hotspots differently based on type
+    if (hotspot.type === 'PRIMARY') {
+      // Set the active PRIMARY hotspot for sequence handling
+      setActivePrimaryHotspot(hotspot);
+      setActiveHotspot(hotspot);
       
-      if (!playlist) {
-        logger.warn(MODULE, `No playlist found for hotspot: ${hotspot._id}`);
+      // Skip if video state manager not initialized
+      if (!videoStateManagerRef.current) {
+        logger.error(MODULE, 'Cannot handle hotspot click: video state manager not initialized');
         return;
       }
       
-      logger.info(MODULE, `Starting playlist for hotspot: ${hotspot.name}`);
+      try {
+        // Fetch the playlist for this hotspot
+        logger.info(MODULE, `Fetching playlist for hotspot: ${hotspot._id}`);
+        const playlist = await dataLayer.getPlaylistByHotspot(hotspot._id);
+        
+        if (!playlist) {
+          logger.warn(MODULE, `No playlist found for hotspot: ${hotspot._id}`);
+          return;
+        }
+        
+        logger.info(MODULE, `Starting playlist for hotspot: ${hotspot.name}`);
+        
+        // Start the playlist using the video state manager
+        videoStateManagerRef.current.startHotspotPlaylist(hotspot, playlist);
+      } catch (error) {
+        logger.error(MODULE, `Error handling hotspot click: ${error.message}`);
+      }
+    } else if (hotspot.type === 'SECONDARY') {
+      // For SECONDARY hotspots, just display the info panel without interrupting video
+      logger.info(MODULE, `Showing info panel for secondary hotspot: ${hotspot.name}`);
       
-      // Start the playlist using the video state manager
-      videoStateManagerRef.current.startHotspotPlaylist(hotspot, playlist);
-    } catch (error) {
-      logger.error(MODULE, `Error handling hotspot click: ${error.message}`);
+      // Save video state before showing info panel (to ensure we maintain playback)
+      const wasPlaying = videoRef.current && !videoRef.current.paused;
+      
+      // Update both tracking states
+      setActiveSecondaryHotspot(hotspot);
+      setActiveHotspot(hotspot);
+      
+      // Ensure video keeps playing if it was playing before
+      if (wasPlaying && videoRef.current) {
+        // Use setTimeout to ensure this happens after the InfoPanel is rendered
+        setTimeout(() => {
+          if (videoRef.current && videoRef.current.paused) {
+            logger.debug(MODULE, 'Ensuring video continues playing while InfoPanel is shown');
+            videoRef.current.play().catch(err => {
+              logger.error(MODULE, 'Error ensuring video continues playing:', err);
+            });
+          }
+        }, 100);
+      }
     }
-  }, []);
+  }, [videoStateManagerRef, activePrimaryHotspot]);
   
   // Save reference to video element
   const handleVideoRef = useCallback((videoElement) => {
     videoRef.current = videoElement;
+  }, []);
+  
+  // Modal close handler that preserves video state
+  const handleInfoPanelClose = useCallback(() => {
+    logger.debug(MODULE, 'Closing secondary hotspot info panel');
+    setActiveSecondaryHotspot(null);
+    // Only clear the main activeHotspot if there's no active PRIMARY hotspot
+    if (!activePrimaryHotspot) {
+      setActiveHotspot(null);
+    }
+  }, [activePrimaryHotspot]);
+  
+  // Set up debug mode keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        setDebugMode(prev => {
+          const newValue = !prev;
+          // Only log in development mode to avoid cluttering production logs
+          if (process.env.NODE_ENV !== 'production') {
+            logger.info(MODULE, `Debug mode ${newValue ? 'enabled' : 'disabled'}`);
+          }
+          return newValue;
+        });
+        e.preventDefault();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Only log in development mode
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info(MODULE, 'Debug mode shortcut available (Ctrl+Shift+D)');
+    }
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
   
   // Show loading screen if global loading is true
@@ -461,6 +697,15 @@ const Experience = () => {
           hotspots={hotspots}
           onHotspotClick={handleHotspotClick}
           videoRef={videoRef}
+          debugMode={debugMode}
+        />
+      )}
+      
+      {/* Info panel for secondary hotspots */}
+      {activeSecondaryHotspot && currentVideo === 'aerial' && (
+        <InfoPanel 
+          hotspot={activeSecondaryHotspot}
+          onClose={handleInfoPanelClose}
         />
       )}
       
@@ -476,54 +721,30 @@ const Experience = () => {
         </div>
       )}
       
-      {/* UI Controls */}
+      {/* UI Controls - Only show Back button in normal mode */}
       <div className="absolute top-4 right-4 z-10 flex items-center gap-4">
-        {/* Back button */}
+        {/* Back button - always shown */}
         <button 
           className="px-4 py-2 bg-netflix-red text-white rounded hover:bg-netflix-red/80 transition-colors"
           onClick={handleBackToHome}
         >
           Back to Home
         </button>
-        
-        {/* Status indicator (combines offline, cache status, and playlist mode) */}
-        <div className={`px-3 py-1 rounded text-sm text-white ${
-          inPlaylistMode 
-            ? 'bg-blue-600' 
-            : offlineMode 
-              ? 'bg-yellow-600' 
-              : usesServiceWorker 
-                ? 'bg-green-600' 
-                : 'bg-orange-500'
-        }`}>
-          {inPlaylistMode 
-            ? 'Hotspot Experience' 
-            : offlineMode 
-              ? 'Offline Mode' 
-              : usesServiceWorker 
-                ? 'Cache Ready' 
-                : 'Online Mode'}
-        </div>
       </div>
       
-      {/* Location info */}
-      {currentLocation && !inPlaylistMode && (
-        <div className="absolute bottom-8 left-8 z-10 bg-black/70 p-4 rounded text-white">
-          <h2 className="text-2xl font-bold">{currentLocation.name}</h2>
-          {currentLocation.description && (
-            <p className="mt-2 text-sm max-w-md">{currentLocation.description}</p>
+      {/* Debug info - only shown in debug mode */}
+      {debugMode && (
+        <>
+          {/* Location info */}
+          {currentLocation && !inPlaylistMode && (
+            <div className="absolute bottom-8 left-8 z-10 bg-black/70 p-4 rounded text-white">
+              <h2 className="text-2xl font-bold">{currentLocation.name}</h2>
+              {currentLocation.description && (
+                <p className="mt-2 text-sm max-w-md">{currentLocation.description}</p>
+              )}
+            </div>
           )}
-        </div>
-      )}
-      
-      {/* Hotspot info (shown during playlist mode) */}
-      {activeHotspot && inPlaylistMode && (
-        <div className="absolute bottom-8 left-8 z-10 bg-black/70 p-4 rounded text-white">
-          <h2 className="text-2xl font-bold">{activeHotspot.name}</h2>
-          {activeHotspot.description && (
-            <p className="mt-2 text-sm max-w-md">{activeHotspot.description}</p>
-          )}
-        </div>
+        </>
       )}
       
       {/* Loading indicator overlay */}

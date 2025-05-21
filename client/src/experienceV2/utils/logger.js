@@ -19,6 +19,10 @@ const LOG_LEVELS = {
 // Current log level based on environment
 const currentLogLevel = isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
 
+// Cache for tracking repeated logs to avoid spam
+const logCache = new Map();
+const LOG_CACHE_EXPIRY = 10000; // 10 seconds
+
 /**
  * Format log message with module name
  * @param {string} module - Module name
@@ -27,6 +31,46 @@ const currentLogLevel = isDevelopment ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
  */
 const formatMessage = (module, message) => {
   return `[${module}] ${message}`;
+};
+
+/**
+ * Check if a log message is a repeat and should be suppressed
+ * @param {string} module - Module name
+ * @param {string} message - Log message
+ * @param {number} level - Log level
+ * @returns {boolean} True if should be suppressed
+ */
+const shouldSuppressRepeat = (module, message, level) => {
+  // Don't suppress errors or warnings
+  if (level >= LOG_LEVELS.WARN) return false;
+  
+  // Only apply repeat suppression in production
+  if (isDevelopment) return false;
+  
+  const key = `${module}:${message}`;
+  const now = Date.now();
+  
+  // Check if we've logged this recently
+  if (logCache.has(key)) {
+    const lastTime = logCache.get(key);
+    if (now - lastTime < LOG_CACHE_EXPIRY) {
+      return true; // Suppress repeat
+    }
+  }
+  
+  // Update cache with current time
+  logCache.set(key, now);
+  
+  // Prune old entries occasionally
+  if (Math.random() < 0.1) { // 10% chance to clean up on each log
+    for (const [cacheKey, timestamp] of logCache.entries()) {
+      if (now - timestamp > LOG_CACHE_EXPIRY) {
+        logCache.delete(cacheKey);
+      }
+    }
+  }
+  
+  return false;
 };
 
 /**
@@ -40,7 +84,7 @@ const logger = {
    * @param {any} data - Optional data to log
    */
   debug: (module, message, data) => {
-    if (currentLogLevel <= LOG_LEVELS.DEBUG) {
+    if (currentLogLevel <= LOG_LEVELS.DEBUG && !shouldSuppressRepeat(module, message, LOG_LEVELS.DEBUG)) {
       if (data) {
         console.debug(formatMessage(module, message), data);
       } else {
@@ -56,7 +100,7 @@ const logger = {
    * @param {any} data - Optional data to log
    */
   info: (module, message, data) => {
-    if (currentLogLevel <= LOG_LEVELS.INFO) {
+    if (currentLogLevel <= LOG_LEVELS.INFO && !shouldSuppressRepeat(module, message, LOG_LEVELS.INFO)) {
       if (data) {
         console.info(formatMessage(module, message), data);
       } else {
