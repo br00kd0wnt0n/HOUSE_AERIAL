@@ -23,35 +23,72 @@
 .hotspot-polygon {
   fill: rgba(255, 0, 0, 0.2);
   stroke: rgba(255, 0, 0, 0.5);
-  stroke-width: 0.5;
-  pointer-events: all;
+  stroke-width: 2px;
+  pointer-events: all; /* Always keep clickable */
   cursor: pointer;
-  opacity: 0.3; /* Make visible by default for testing */
-  transition: opacity 0.3s ease;
+  opacity: 0.5;
+  transition: opacity 0.3s ease, fill 0.3s ease, stroke 0.3s ease;
 }
 
+/* Only show hover effect in debug mode or when cursor hovers */
 .hotspot-polygon:hover {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
+/* Enhanced cursor feedback when hovering over invisible hotspots */
+.hotspot-overlay svg {
+  cursor: default;
+}
+
+/* Use this special rule to make transparent polygons change cursor on hover */
+polygon.hotspot-polygon {
+  cursor: pointer;
+}
+
+/* Show cursor pointer even when polygons are transparent */
+.hotspot-svg:has(.hotspot-polygon:hover) {
+  cursor: pointer;
+}
+
+/* Styles for normal mode (non-debug) */
+/* In normal mode, make polygons invisible but still clickable */
+.hotspot-svg:not(.debug-mode) .hotspot-polygon {
+  fill: rgba(0, 0, 0, 0);
+  stroke: rgba(0, 0, 0, 0);
+  opacity: 0; /* Invisible */
+}
+
+.hotspot-svg:not(.debug-mode) .hotspot-polygon:hover {
+  opacity: 0.15; /* Slight visibility on hover for better UX */
+}
+
+/* When debug-mode is on, show polygons with different colors based on type */
+.debug-mode .hotspot-polygon {
+  opacity: 0.6;
+}
+
+/* Primary hotspots (video sequence) */
 .primary-polygon {
-  fill: rgba(229, 9, 20, 0.3);
-  stroke: rgba(229, 9, 20, 0.7);
+  fill: rgba(229, 9, 20, 0.4);
+  stroke: rgba(229, 9, 20, 0.8);
+  stroke-width: 2px;
 }
 
 .primary-polygon:hover {
-  fill: rgba(229, 9, 20, 0.5);
-  stroke: rgba(229, 9, 20, 0.9);
+  fill: rgba(229, 9, 20, 0.6);
+  stroke: rgba(229, 9, 20, 1);
 }
 
+/* Secondary hotspots (info panel) */
 .secondary-polygon {
-  fill: rgba(0, 120, 215, 0.3);
-  stroke: rgba(0, 120, 215, 0.7);
+  fill: rgba(0, 120, 215, 0.4);
+  stroke: rgba(0, 120, 215, 0.8);
+  stroke-width: 2px;
 }
 
 .secondary-polygon:hover {
-  fill: rgba(0, 120, 215, 0.5);
-  stroke: rgba(0, 120, 215, 0.9);
+  fill: rgba(0, 120, 215, 0.6);
+  stroke: rgba(0, 120, 215, 1);
 }
 
 /* Map pins and hotspots */
@@ -84,7 +121,10 @@
 
 /* Debug mode styles */
 .debug-visible.hotspot-polygon {
-  opacity: 0.5 !important;
+  opacity: 0.8 !important;
+  stroke-width: 3px !important;
+  fill: rgba(229, 9, 20, 0.5) !important;
+  stroke: rgba(229, 9, 20, 0.9) !important;
 }
 
 .debug-visible.hotspot-wrapper {
@@ -120,24 +160,92 @@
 
 .debug-panel {
   position: absolute;
-  top: 70px;
+  bottom: 10px;
   right: 10px;
-  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 50;
+  background-color: rgba(0, 0, 0, 0.75);
   color: white;
   padding: 10px;
-  border-radius: 4px;
+  border-radius: 5px;
+  max-width: 350px;
+  max-height: 80vh;
+  overflow: auto;
   font-size: 12px;
-  max-width: 200px;
-  pointer-events: none;
-  z-index: 100;
+  font-family: monospace;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .debug-panel h3 {
-  margin-top: 0;
-  margin-bottom: 5px;
+  margin: 0 0 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   font-size: 14px;
+  text-align: center;
 }
 
-.debug-panel p {
-  margin: 3px 0;
+.debug-panel ul {
+  margin: 4px 0;
+  padding-left: 15px;
+  list-style-type: square;
+}
+
+.debug-panel .warning {
+  padding: 5px;
+  background-color: rgba(255, 0, 0, 0.5);
+  margin-bottom: 8px;
+  border-radius: 3px;
+}
+
+.debug-panel .section {
+  margin-bottom: 12px;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.2);
+  padding-bottom: 8px;
+}
+
+.debug-panel .section:last-child {
+  border-bottom: none;
+}
+
+.debug-panel .section strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #69b4ff;
+}
+
+.debug-panel .keyboard-hint {
+  font-size: 11px;
+  margin-top: 8px;
+  opacity: 0.7;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 4px;
+  border-radius: 3px;
+}
+
+/* Word wrap for long URLs or cache names */
+.debug-panel li {
+  word-break: break-word;
+}
+
+/* Hotspot debug marker styles */
+.debug-hotspot-marker {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: rgba(255, 0, 0, 0.7);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+}
+
+.debug-hotspot-name {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  pointer-events: none;
 }

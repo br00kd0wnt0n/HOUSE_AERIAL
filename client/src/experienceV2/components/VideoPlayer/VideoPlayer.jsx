@@ -119,8 +119,60 @@ const VideoPlayer = ({
     
     if (src) {
       onLoadStart(type);
+      
+      // Reset video element when source changes, especially when returning to aerial
+      if (videoRef.current) {
+        logger.debug(MODULE, `Source changed to ${type}, resetting video element`);
+        
+        // For aerial videos, do a complete reset
+        if (type === 'aerial') {
+          logger.info(MODULE, `Reloading aerial video with source: ${src.substring(0, 50)}...`);
+          
+          // Complete reset sequence for video element
+          videoRef.current.pause();
+          videoRef.current.removeAttribute('src'); // Remove the source
+          videoRef.current.load(); // Reset the video element
+          
+          // Set the new source with a slight delay to ensure DOM has updated
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.src = src;
+              videoRef.current.load();
+              
+              // Attempt to play if we should be playing
+              if (isPlaying) {
+                const playPromise = videoRef.current.play();
+                if (playPromise !== undefined) {
+                  playPromise.catch(error => {
+                    logger.error(MODULE, `Error playing aerial video after reset:`, error);
+                  });
+                }
+              }
+            }
+          }, 50);
+        } else {
+          // For non-aerial videos, just reset the current time
+          videoRef.current.currentTime = 0;
+        }
+      }
     }
-  }, [src, type, onLoadStart]);
+  }, [src, type, onLoadStart, isPlaying]);
+  
+  // Listen for type changes specifically for detecting return to aerial
+  useEffect(() => {
+    if (type === 'aerial' && videoRef.current && isLoaded) {
+      logger.debug(MODULE, 'Type changed to aerial, ensuring proper playback');
+      // Ensure the video is actually playing
+      if (isPlaying && videoRef.current.paused) {
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            logger.error(MODULE, `Error playing aerial video after type change:`, error);
+          });
+        }
+      }
+    }
+  }, [type, isLoaded, isPlaying]);
   
   // Handle play/pause based on isPlaying prop
   useEffect(() => {
@@ -184,7 +236,10 @@ const VideoPlayer = ({
             playsInline
             muted={type === 'transition'}
             loop={type === 'aerial'}
-            onEnded={() => onEnded(type)}
+            onEnded={() => {
+              logger.debug(MODULE, `Video ended: ${type}`);
+              onEnded(type);
+            }}
             onCanPlayThrough={handleVideoLoaded}
             onError={handleVideoError}
             preload="auto"

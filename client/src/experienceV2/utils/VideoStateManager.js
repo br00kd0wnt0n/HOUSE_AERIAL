@@ -57,6 +57,31 @@ class VideoStateManager {
   }
   
   /**
+   * Handle hotspot specific logic based on type
+   * @param {Object} hotspot The hotspot to check
+   * @returns {boolean} True if the hotspot triggers a playlist, false otherwise
+   */
+  handleHotspotAction(hotspot) {
+    if (!hotspot) return false;
+    
+    // For SECONDARY hotspots, immediately return without affecting video state
+    if (hotspot.type === 'SECONDARY') {
+      logger.debug(MODULE, `Secondary hotspot clicked (${hotspot.name}), video playback unchanged`);
+      return false; // Don't process in the playlist system
+    }
+    
+    // Store the current hotspot for PRIMARY hotspots
+    if (hotspot.type === 'PRIMARY') {
+      this.currentHotspot = hotspot;
+      return true; // Allow playlist handling
+    }
+    
+    // Default case - unknown hotspot type
+    logger.warn(MODULE, `Unknown hotspot type: ${hotspot.type}, hotspot:`, hotspot);
+    return false;
+  }
+  
+  /**
    * Start a playlist for a hotspot
    * @param {Object} hotspot The hotspot to play
    * @param {Object} playlist The playlist associated with the hotspot
@@ -73,6 +98,12 @@ class VideoStateManager {
     // Check if we're already in a playlist and need to reset
     if (this.inPlaylistMode) {
       this.resetPlaylist();
+    }
+    
+    // Handle the hotspot based on its type
+    if (!this.handleHotspotAction(hotspot)) {
+      logger.debug(MODULE, `Hotspot ${hotspot.name} (${hotspot.type}) does not trigger a playlist`);
+      return false;
     }
     
     logger.info(MODULE, `Starting playlist for hotspot: ${hotspot.name}`);
@@ -147,35 +178,81 @@ class VideoStateManager {
     // Check if we've reached the end of the playlist
     if (this.playlistIndex >= this.playlistVideos.length) {
       logger.info(MODULE, 'Reached end of playlist, returning to aerial');
+      
+      // Make sure to properly reset the playlist mode
+      const wasInPlaylistMode = this.inPlaylistMode;
+      const hotspotId = this.currentHotspot?._id;
+      
+      // Reset playlist first to ensure clean state
       this.resetPlaylist();
-      this.changeState(VIDEO_STATES.AERIAL);
+      
+      // Set internal state first
+      this.currentState = VIDEO_STATES.AERIAL;
+      
+      // Then trigger state change callback
+      // We're bypassing changeState() to avoid any potential issues with state validation
+      this.onVideoChange(VIDEO_STATES.AERIAL);
+      
+      // Load a "null" aerial video to signal return to default aerial
+      this.onLoadVideo({
+        type: VIDEO_STATES.AERIAL,
+        id: 'aerial_return',
+        accessUrl: null // This signals to the Experience component to find the proper aerial URL
+      });
+      
+      // Log the transition
+      if (wasInPlaylistMode) {
+        logger.info(MODULE, `Successfully transitioned from playlist mode to aerial view for hotspot: ${hotspotId}`);
+      }
+      
       return true;
     }
     
-    // Get the current video from the playlist
-    const video = this.playlistVideos[this.playlistIndex];
-    if (!video) {
-      logger.error(MODULE, `Invalid playlist index: ${this.playlistIndex}`);
+    try {
+      // Get the current video from the playlist
+      const video = this.playlistVideos[this.playlistIndex];
+      if (!video) {
+        logger.error(MODULE, `Invalid playlist index: ${this.playlistIndex}`);
+        this.resetPlaylist();
+        
+        // Set internal state first
+        this.currentState = VIDEO_STATES.AERIAL;
+        
+        // Then trigger state change callback
+        this.onVideoChange(VIDEO_STATES.AERIAL);
+        return false;
+      }
+      
+      logger.info(MODULE, `Playing playlist video ${this.playlistIndex + 1}/${this.playlistVideos.length}: ${video.type}`);
+      
+      // Update current state
+      this.currentState = video.type;
+      
+      // Trigger video load
+      this.onLoadVideo(video);
+      
+      // Notify about state change
+      this.onVideoChange(video.type);
+      
+      // Increment playlist index for next time
+      this.playlistIndex++;
+      
+      return true;
+    } catch (error) {
+      // Handle any errors during playlist progression
+      logger.error(MODULE, `Error playing next video in playlist: ${error.message}`);
+      
+      // Reset playlist and return to aerial view as a safety measure
       this.resetPlaylist();
-      this.changeState(VIDEO_STATES.AERIAL);
+      
+      // Set internal state first
+      this.currentState = VIDEO_STATES.AERIAL;
+      
+      // Then trigger state change callback
+      this.onVideoChange(VIDEO_STATES.AERIAL);
+      
       return false;
     }
-    
-    logger.info(MODULE, `Playing playlist video ${this.playlistIndex + 1}/${this.playlistVideos.length}: ${video.type}`);
-    
-    // Update current state
-    this.currentState = video.type;
-    
-    // Trigger video load
-    this.onLoadVideo(video);
-    
-    // Notify about state change
-    this.onVideoChange(video.type);
-    
-    // Increment playlist index for next time
-    this.playlistIndex++;
-    
-    return true;
   }
   
   /**
@@ -186,14 +263,42 @@ class VideoStateManager {
   handleVideoEnded(videoType) {
     logger.debug(MODULE, `Video ended: ${videoType}`);
     
-    // If we're in a playlist, play the next video
+    // Check if we're in a playlist, play the next video
     if (this.inPlaylistMode) {
+      // Check if this is the last video in the sequence (zoomOut)
+      // It could be in the format 'zoomOut_123abc' so check the base type
+      const isZoomOut = videoType.startsWith(VIDEO_STATES.ZOOM_OUT);
+      
+      // If this was the zoom-out video and playlist index indicates we've reached the end
+      if (isZoomOut && this.playlistIndex >= this.playlistVideos.length) {
+        logger.info(MODULE, 'Last video (zoom-out) in playlist ended, returning to aerial view');
+        
+        // Store state before resetting playlist
+        const currentHotspotId = this.currentHotspot?._id;
+        
+        // Important: Reset playlist BEFORE changing state to avoid infinite loop
+        this.resetPlaylist();
+        
+        // Explicitly clear internal state to ensure clean transition
+        this.currentState = VIDEO_STATES.AERIAL;
+        
+        // Then trigger the state change notification
+        this.onVideoChange(VIDEO_STATES.AERIAL);
+        
+        // Log detailed information about the transition
+        logger.info(MODULE, `Completed playlist for hotspot: ${currentHotspotId}, transitioned to aerial view`);
+        return;
+      }
+      
+      // Otherwise continue with next video in playlist
       this.playNextInPlaylist();
       return;
     }
     
     // For non-playlist mode, just return to aerial
-    if (videoType !== VIDEO_STATES.AERIAL) {
+    // Check the base type without the hotspot ID suffix
+    const baseVideoType = videoType.split('_')[0];
+    if (baseVideoType !== VIDEO_STATES.AERIAL) {
       this.changeState(VIDEO_STATES.AERIAL);
     }
   }
@@ -205,6 +310,7 @@ class VideoStateManager {
   resetPlaylist() {
     logger.info(MODULE, 'Resetting playlist');
     
+    // Explicitly null out all playlist-related state
     this.currentHotspot = null;
     this.currentPlaylist = null;
     this.inPlaylistMode = false;

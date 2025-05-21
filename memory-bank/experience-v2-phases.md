@@ -101,7 +101,7 @@ As of the latest update, we have completed:
 - Requires working VideoPlayer from Phase 1
 - Needs hotspot data from API
 
-**Status:** Completed
+**Status:** In Progress
 
 ---
 
@@ -150,6 +150,11 @@ As of the latest update, we have completed:
 - [ ] Optimize rendering to prevent unnecessary re-renders
 - [ ] Create network status indicators and offline mode UI
 - [ ] Profile and optimize performance bottlenecks
+- [ ] Implement persistent cache registry to prevent video re-caching
+  - [ ] Create IndexedDB storage for tracking cached videos and their versions
+  - [ ] Add cache validation before triggering caching process
+  - [ ] Implement version comparison to only re-cache updated videos
+  - [ ] Add metrics tracking for cache hits/misses
 
 **Testing Criteria:**
 
@@ -157,6 +162,8 @@ As of the latest update, we have completed:
 - Smooth performance on target iPad devices
 - Clear indication of network status to users
 - Graceful behavior in poor network conditions
+- No redundant re-caching of videos when returning to main menu
+- Reduced bandwidth usage on subsequent visits
 
 **Dependencies:**
 
@@ -202,7 +209,7 @@ As of the latest update, we have completed:
 | Phase | Description               | Status      | Started    | Completed  | Notes                                       |
 | ----- | ------------------------- | ----------- | ---------- | ---------- | ------------------------------------------- |
 | 1     | Core Video Experience     | Completed   | 2023-08-01 | 2023-08-08 | Successfully implemented with cache support |
-| 2     | Interactive Hotspots      | Completed   | 2023-08-09 | 2023-08-15 |                                             |
+| 2     | Interactive Hotspots      | In Progress | 2023-08-09 | -          | Found issues with hotspot rendering         |
 | 3     | Multi-Location Navigation | Not Started | -          | -          |                                             |
 | 4     | Performance Optimization  | Not Started | -          | -          |                                             |
 | 5     | Production Readiness      | Not Started | -          | -          |                                             |

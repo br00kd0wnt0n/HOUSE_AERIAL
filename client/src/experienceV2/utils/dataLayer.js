@@ -207,24 +207,44 @@ const dataLayer = {
     }
     
     try {
-      // Add additional logging to debug
-      logger.info(MODULE, `Requesting hotspots for location: ${locationId}`);
+      // Check cache first (properly this time)
+      const cacheKey = getCacheKey('getHotspotsByLocation', { locationId });
+      
+      // If we have cached data and not forcing refresh, use it
+      if (!forceRefresh && cache.hotspots && cache.hotspots[locationId]) {
+        logger.debug(MODULE, `Using cached hotspots for location: ${locationId}`);
+        return cache.hotspots[locationId];
+      }
+      
+      // If there's already a request in flight, reuse it
+      if (pendingRequests[cacheKey]) {
+        logger.debug(MODULE, `Reusing pending hotspots request for location: ${locationId}`);
+        return pendingRequests[cacheKey];
+      }
+      
+      // Only log at debug level in production to reduce noise
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info(MODULE, `Requesting hotspots for location: ${locationId}`);
+      } else {
+        logger.debug(MODULE, `Requesting hotspots for location: ${locationId}`);
+      }
       
       // Make the request
-      const apiRequest = api.getHotspotsByLocation(locationId);
+      const apiPromise = api.getHotspotsByLocation(locationId);
       
       // Store in pendingRequests for deduplication
-      const cacheKey = getCacheKey('getHotspotsByLocation', { locationId });
-      pendingRequests[cacheKey] = apiRequest;
+      pendingRequests[cacheKey] = apiPromise;
       
-      const response = await apiRequest;
+      const response = await apiPromise;
       delete pendingRequests[cacheKey];
       
-      // For logging only
-      if (response) {
-        logger.info(MODULE, `Got hotspots response type: ${typeof response}, isArray: ${Array.isArray(response)}`);
-        if (Array.isArray(response)) {
-          logger.info(MODULE, `Found ${response.length} hotspots from API for location ${locationId}`);
+      // For logging only - use debug level in production
+      if (process.env.NODE_ENV !== 'production') {
+        if (response) {
+          logger.debug(MODULE, `Got hotspots response type: ${typeof response}, isArray: ${Array.isArray(response)}`);
+          if (Array.isArray(response)) {
+            logger.info(MODULE, `Found ${response.length} hotspots from API for location ${locationId}`);
+          }
         }
       }
       
@@ -242,10 +262,8 @@ const dataLayer = {
       );
       
       // Update cache
-      if (validHotspots.length > 0) {
-        if (!cache.hotspots) cache.hotspots = {};
-        cache.hotspots[locationId] = validHotspots;
-      }
+      if (!cache.hotspots) cache.hotspots = {};
+      cache.hotspots[locationId] = validHotspots.length > 0 ? validHotspots : hotspots;
       
       if (validHotspots.length === 0 && hotspots.length > 0) {
         logger.warn(MODULE, `Found ${hotspots.length} hotspots for location ${locationId}, but none have valid coordinates`);
