@@ -17,7 +17,7 @@ const Menu = () => {
   
   // Handle location selection
   const handleLocationSelect = (locationId) => {
-    navigate(`/experience/${locationId}`);
+    navigate(`/v0/experience/${locationId}`);
   };
   
   // Fetch button assets from API

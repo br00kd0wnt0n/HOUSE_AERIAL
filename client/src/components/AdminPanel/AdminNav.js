@@ -34,7 +34,7 @@ const AdminNav = () => {
     logout();
     // Set admin mode to false
     setIsAdminMode(false);
-    // Navigate to the root path
+    // Navigate to the root path - now V2 experience
     navigate('/');
   };
 

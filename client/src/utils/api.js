@@ -220,9 +220,24 @@ const api = {
 
   // Hotspot endpoints
   getHotspots: () => instance.get('/hotspots'),
-  getHotspotsByLocation: (locationId) => instance.get('/hotspots', {
-    params: { location: locationId }
-  }),
+  getHotspotsByLocation: async (locationId) => {
+    try {
+      console.log(`Fetching hotspots for location: ${locationId}`);
+      const response = await instance.get('/hotspots', {
+        params: { location: locationId }
+      });
+      
+      // Ensure we always return an array, even if the API returns something else
+      if (response && response.data) {
+        console.log(`Hotspots API response for ${locationId}:`, response.data);
+        return Array.isArray(response.data) ? response.data : [];
+      }
+      return [];
+    } catch (error) {
+      console.error(`Error fetching hotspots for location ${locationId}:`, error);
+      return [];
+    }
+  },
   getHotspot: (id) => instance.get(`/hotspots/${id}`),
   createHotspot: (data) => instance.post('/hotspots', data),
   updateHotspot: (id, data) => instance.put(`/hotspots/${id}`, data),

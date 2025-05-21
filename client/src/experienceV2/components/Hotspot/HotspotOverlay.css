@@ -1,0 +1,143 @@
+.hotspot-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* SVG contains the polygon hotspots */
+.hotspot-svg {
+  /* Position is set dynamically in the component to match the video exactly */
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Make polygon elements clickable */
+.hotspot-polygon {
+  fill: rgba(255, 0, 0, 0.2);
+  stroke: rgba(255, 0, 0, 0.5);
+  stroke-width: 0.5;
+  pointer-events: all;
+  cursor: pointer;
+  opacity: 0.3; /* Make visible by default for testing */
+  transition: opacity 0.3s ease;
+}
+
+.hotspot-polygon:hover {
+  opacity: 0.7;
+}
+
+.primary-polygon {
+  fill: rgba(229, 9, 20, 0.3);
+  stroke: rgba(229, 9, 20, 0.7);
+}
+
+.primary-polygon:hover {
+  fill: rgba(229, 9, 20, 0.5);
+  stroke: rgba(229, 9, 20, 0.9);
+}
+
+.secondary-polygon {
+  fill: rgba(0, 120, 215, 0.3);
+  stroke: rgba(0, 120, 215, 0.7);
+}
+
+.secondary-polygon:hover {
+  fill: rgba(0, 120, 215, 0.5);
+  stroke: rgba(0, 120, 215, 0.9);
+}
+
+/* Map pins and hotspots */
+.hotspot-wrapper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  z-index: 5;
+}
+
+.map-pin-container {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  cursor: pointer;
+  opacity: 0; /* Hidden by default */
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.map-pin-container:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* Map pin image */
+.map-pin-image {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+/* Debug mode styles */
+.debug-visible.hotspot-polygon {
+  opacity: 0.5 !important;
+}
+
+.debug-visible.hotspot-wrapper {
+  background-color: rgba(255, 0, 0, 0.5);
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+
+.debug-hotspot-marker {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.debug-hotspot-name {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.debug-panel {
+  position: absolute;
+  top: 70px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  max-width: 200px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.debug-panel h3 {
+  margin-top: 0;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.debug-panel p {
+  margin: 3px 0;
+}

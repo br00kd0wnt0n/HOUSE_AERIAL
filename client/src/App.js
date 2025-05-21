@@ -19,6 +19,9 @@ import api from './utils/api';
 import './styles/index.css'; // Only import the main Tailwind CSS file
 import { Button } from './components/ui/button';
 
+// Import the V2 experience routes
+import ExperienceRoutes from './experienceV2/routes/ExperienceRoutes';
+
 // Admin page titles
 const PAGE_TITLES = {
   '/admin/assets': 'Asset Management',
@@ -184,18 +187,32 @@ function AppContent() {
     );
   }
 
-  // Show normal application view
+  // Show normal application view with both v1 and v2 experiences
   return (
-    <VideoProvider>
-      <div className="min-h-screen bg-netflix-black text-white">
-        <Routes>
-          <Route path="/" element={<Menu />} />
-          <Route path="/experience/:locationId" element={<Experience />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-      </div>
-    </VideoProvider>
+    <>
+      {/* Route structure with conditional rendering */}
+      <Routes>
+        {/* V1 Experience moved to /v0/* path */}
+        <Route path="/v0/*" element={
+          <VideoProvider>
+            <div className="min-h-screen bg-netflix-black text-white">
+              <Routes>
+                <Route path="/" element={<Menu />} />
+                <Route path="/experience/:locationId" element={<Experience />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+              <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+            </div>
+          </VideoProvider>
+        } />
+        
+        {/* V2 Experience Routes - Now at root path */}
+        <Route path="/*" element={
+          <ExperienceRoutes />
+        } />
+      </Routes>
+      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+    </>
   );
 }
 

@@ -9,14 +9,12 @@ import './styles/ErrorBoundary.css';
 const container = document.getElementById('root');
 const root = createRoot(container);
 
-// Temporarily disabling StrictMode for debugging
-// Re-enable for production and regular development
 root.render(
-  // <React.StrictMode>
+  <React.StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
         <App />
       </BrowserRouter>
     </ErrorBoundary>
-  // </React.StrictMode>
+  </React.StrictMode>
 );
