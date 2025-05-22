@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import LocationButton from './LocationButton';
 import logger from '../../utils/logger';
 import dataLayer from '../../utils/dataLayer';
@@ -57,6 +57,48 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
     
     return filtered;
   }, [locations, currentLocationId]);
+
+  // Helper to preload an individual image
+  const preloadImage = useCallback((src) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(src);
+      img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+      img.src = src;
+    });
+  }, []);
+
+  // Preload all button images to prevent flickering
+  const preloadButtonImages = useCallback(async (assetsMap) => {
+    try {
+      const preloadPromises = [];
+      
+      // Create promises for all image preloads
+      Object.entries(assetsMap).forEach(([locationId, assets]) => {
+        if (assets.on?.accessUrl) {
+          preloadPromises.push(preloadImage(assets.on.accessUrl));
+        }
+        if (assets.off?.accessUrl) {
+          preloadPromises.push(preloadImage(assets.off.accessUrl));
+        }
+      });
+      
+      // Wait for all images to preload
+      await Promise.all(preloadPromises);
+      logger.info(MODULE, 'All button images preloaded successfully');
+      
+      // Delay showing buttons slightly to ensure smooth render
+      setTimeout(() => {
+        setButtonsReady(true);
+      }, 100);
+    } catch (error) {
+      logger.warn(MODULE, 'Error preloading button images:', error);
+      // Show buttons anyway after a delay
+      setTimeout(() => {
+        setButtonsReady(true);
+      }, 500);
+    }
+  }, [preloadImage]);
 
   // Fetch button assets for available locations
   useEffect(() => {
@@ -154,49 +196,7 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
     };
     
     loadButtonAssets();
-  }, [availableLocations, loadAttempts, currentLocationId, prevLocationId]);
-
-  // Preload all button images to prevent flickering
-  const preloadButtonImages = async (assetsMap) => {
-    try {
-      const preloadPromises = [];
-      
-      // Create promises for all image preloads
-      Object.entries(assetsMap).forEach(([locationId, assets]) => {
-        if (assets.on?.accessUrl) {
-          preloadPromises.push(preloadImage(assets.on.accessUrl));
-        }
-        if (assets.off?.accessUrl) {
-          preloadPromises.push(preloadImage(assets.off.accessUrl));
-        }
-      });
-      
-      // Wait for all images to preload
-      await Promise.all(preloadPromises);
-      logger.info(MODULE, 'All button images preloaded successfully');
-      
-      // Delay showing buttons slightly to ensure smooth render
-      setTimeout(() => {
-        setButtonsReady(true);
-      }, 100);
-    } catch (error) {
-      logger.warn(MODULE, 'Error preloading button images:', error);
-      // Show buttons anyway after a delay
-      setTimeout(() => {
-        setButtonsReady(true);
-      }, 500);
-    }
-  };
-  
-  // Helper to preload an individual image
-  const preloadImage = (src) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(src);
-      img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-      img.src = src;
-    });
-  };
+  }, [availableLocations, loadAttempts, currentLocationId, prevLocationId, preloadButtonImages]);
 
   // Retry loading if we have locations but no buttons
   useEffect(() => {
