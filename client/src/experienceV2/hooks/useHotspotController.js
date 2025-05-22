@@ -12,7 +12,8 @@ export function useHotspotController({
   locationId,
   videoStateManagerRef,
   state,
-  dispatch
+  dispatch,
+  startFadeToBlack
 }) {
   // Load hotspots for the current location
   useEffect(() => {
@@ -81,12 +82,29 @@ export function useHotspotController({
           return;
         }
         
-        logger.info(MODULE, `Starting playlist for hotspot: ${hotspot.name}`);
+        logger.info(MODULE, `Starting fade to black before hotspot playlist: ${hotspot.name}`);
         
-        // Start the playlist using the video state manager
-        videoStateManagerRef.current.startHotspotPlaylist(hotspot, playlist);
+        // If we have the startFadeToBlack function, use it before starting the playlist
+        if (startFadeToBlack && typeof startFadeToBlack === 'function') {
+          // Start the fade to black effect and pass a callback to start the playlist after fade completes
+          startFadeToBlack(() => {
+            logger.info(MODULE, `Fade to black completed, starting playlist for hotspot: ${hotspot.name}`);
+            
+            // Start the playlist using the video state manager
+            videoStateManagerRef.current.startHotspotPlaylist(hotspot, playlist);
+            
+            // After starting the playlist, turn off the fade effect
+            dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: false });
+          });
+        } else {
+          // Fallback if fade effect not available
+          logger.info(MODULE, `Fade to black not available, starting playlist directly: ${hotspot.name}`);
+          videoStateManagerRef.current.startHotspotPlaylist(hotspot, playlist);
+        }
       } catch (error) {
         logger.error(MODULE, `Error handling hotspot click: ${error.message}`);
+        // Make sure to turn off fade effect in case of error
+        dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: false });
       }
     } else if (hotspot.type === 'SECONDARY') {
       // For SECONDARY hotspots, just display the info panel without interrupting video
@@ -112,7 +130,7 @@ export function useHotspotController({
         }, 100);
       }
     }
-  }, [videoStateManagerRef, state.videoRef, dispatch]);
+  }, [videoStateManagerRef, state.videoRef, dispatch, startFadeToBlack]);
 
   // Modal close handler that preserves video state
   const handleInfoPanelClose = useCallback(() => {

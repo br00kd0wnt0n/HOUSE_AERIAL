@@ -14,7 +14,8 @@ export function useLocationController({
   videoStateManagerRef,
   state,
   dispatch,
-  navigate
+  navigate,
+  startFadeToBlack
 }) {
   // Add a ref to track when a transition was started to prevent immediate completion
   const transitionStartTimeRef = useRef(0);
@@ -55,6 +56,42 @@ export function useLocationController({
     }
   }, [locations, locationId, state.inLocationTransition, videoStateManagerRef, dispatch]);
 
+  // Initialize transition with source and destination locations
+  const initializeTransition = useCallback(async (sourceLoc, destinationLoc) => {
+    // Record transition start time to prevent immediate completion
+    transitionStartTimeRef.current = Date.now();
+    
+    // Update destination location state immediately to ensure components have latest data
+    dispatch({ type: 'SET_DESTINATION_LOCATION', payload: destinationLoc });
+    
+    // Set the location transition state
+    dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: true });
+    
+    // Try to find a transition video between these locations
+    const transitionVideo = await dataLayer.getTransitionVideo(
+      sourceLoc._id, 
+      destinationLoc._id
+    );
+    
+    logger.info(MODULE, `Starting transition from ${sourceLoc.name} to ${destinationLoc.name}`);
+    
+    // Start location transition in the video state manager
+    videoStateManagerRef.current.startLocationTransition(
+      sourceLoc,
+      destinationLoc,
+      transitionVideo
+    );
+    
+    // After starting the transition, turn off the fade effect
+    dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: false });
+    
+    // If we don't have a transition video, the CSS transition will handle it
+    // The navigation will happen after the CSS transition completes
+    if (!transitionVideo) {
+      logger.info(MODULE, 'No transition video available, using CSS transition');
+    }
+  }, [dispatch, videoStateManagerRef]);
+
   // Handle location button click
   const handleLocationButtonClick = useCallback(async (destinationLoc) => {
     logger.info(MODULE, `Location button clicked: ${destinationLoc.name} (${destinationLoc._id})`);
@@ -72,9 +109,6 @@ export function useLocationController({
     }
     
     try {
-      // Record transition start time to prevent immediate completion
-      transitionStartTimeRef.current = Date.now();
-      
       // Get current location info - either from state or look it up using locationId
       let sourceLoc = state.currentLocation;
       
@@ -104,40 +138,47 @@ export function useLocationController({
         return;
       }
       
-      // Update destination location state immediately to ensure components have latest data
-      dispatch({ type: 'SET_DESTINATION_LOCATION', payload: destinationLoc });
+      logger.info(MODULE, `Starting fade to black before location transition to ${destinationLoc.name}`);
       
-      // Set the location transition state
-      dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: true });
-      
-      // Try to find a transition video between these locations
-      const transitionVideo = await dataLayer.getTransitionVideo(
-        sourceLoc._id, 
-        destinationLoc._id
-      );
-      
-      logger.info(MODULE, `Starting transition from ${sourceLoc.name} to ${destinationLoc.name}`);
-      
-      // Start location transition in the video state manager
-      videoStateManagerRef.current.startLocationTransition(
-        sourceLoc,
-        destinationLoc,
-        transitionVideo
-      );
-      
-      // If we don't have a transition video, the CSS transition will handle it
-      // The navigation will happen after the CSS transition completes
-      if (!transitionVideo) {
-        logger.info(MODULE, 'No transition video available, using CSS transition');
+      // If we have the startFadeToBlack function, use it before starting the transition
+      if (startFadeToBlack && typeof startFadeToBlack === 'function') {
+        // Start the fade to black effect and pass a callback to start the transition after fade completes
+        startFadeToBlack(() => {
+          logger.info(MODULE, `Fade to black completed, starting transition to ${destinationLoc.name}`);
+          
+          // Initialize the transition after fade completes
+          initializeTransition(sourceLoc, destinationLoc).catch(error => {
+            logger.error(MODULE, `Error during transition initialization: ${error.message}`);
+            // Reset states in case of error
+            dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: false });
+            dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: false });
+            dispatch({ type: 'SET_DESTINATION_LOCATION', payload: null });
+          });
+        });
+      } else {
+        // Fallback if fade effect not available
+        logger.info(MODULE, `Fade to black not available, starting transition directly to: ${destinationLoc.name}`);
+        await initializeTransition(sourceLoc, destinationLoc);
       }
     } catch (error) {
       logger.error(MODULE, `Error handling location transition: ${error.message}`);
       
       // Reset transition state in case of error
+      dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: false });
       dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: false });
       dispatch({ type: 'SET_DESTINATION_LOCATION', payload: null });
     }
-  }, [state.currentLocation, state.inLocationTransition, state.inPlaylistMode, locations, locationId, videoStateManagerRef, dispatch]);
+  }, [
+    state.currentLocation, 
+    state.inLocationTransition, 
+    state.inPlaylistMode, 
+    locations, 
+    locationId, 
+    videoStateManagerRef, 
+    dispatch,
+    startFadeToBlack,
+    initializeTransition
+  ]);
 
   // Handle CSS transition completion - this is called when the CSS transition is done
   const handleCssTransitionComplete = useCallback(() => {
@@ -161,15 +202,64 @@ export function useLocationController({
     }
   }, [state.destinationLocation, locationId, navigate, dispatch]);
 
-  // Back to home navigation
-  const handleBackToHome = useCallback(() => {
-    navigate('/');
-  }, [navigate]);
+  // Back to map navigation - return to aerial view of current location
+  const handleBackToMap = useCallback(() => {
+    logger.info(MODULE, 'Back to map button clicked, returning to aerial view');
+    
+    // If we have a video state manager, use it to reset the playlist and return to aerial view
+    if (videoStateManagerRef.current) {
+      // First, update our UI state to prevent any race conditions
+      dispatch({ type: 'SET_IN_PLAYLIST_MODE', payload: false });
+      dispatch({ type: 'RESET_HOTSPOTS' });
+      
+      // Ensure we're not in a transition state
+      dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: false });
+      dispatch({ type: 'SET_DESTINATION_LOCATION', payload: null });
+      
+      // Force UI update before resetting the playlist
+      setTimeout(() => {
+        // Reset any active playlist completely
+        if (videoStateManagerRef.current.isInPlaylistMode()) {
+          logger.info(MODULE, 'Resetting active playlist');
+          videoStateManagerRef.current.resetPlaylist();
+        }
+        
+        // Set the state back to aerial
+        logger.info(MODULE, 'Changing state to aerial');
+        
+        // Important: Force reload the aerial video instead of just changing state
+        // This prevents the playlist from restarting
+        // Get current location for logging purposes
+        const locationForLogging = state.currentLocation ? 
+          state.currentLocation.name : 'current location';
+        
+        logger.info(MODULE, `Reloading aerial view for ${locationForLogging}`);
+        
+        // Use the special aerial_return ID to force a clean reload
+        videoStateManagerRef.current.onLoadVideo({
+          type: 'aerial',
+          id: 'aerial_return',
+          accessUrl: null,
+          locationId: locationId
+        });
+        
+        // Then set the state to aerial (order is important)
+        videoStateManagerRef.current.changeState('aerial');
+        
+        logger.info(MODULE, 'Successfully reset to aerial view');
+      }, 0);
+    } else {
+      logger.warn(MODULE, 'Video state manager not available, using fallback navigation');
+      // If no video state manager, just navigate to the current location's experience page
+      // This refreshes the page but ensures we return to the aerial view
+      navigate(`/experience/${locationId}`);
+    }
+  }, [videoStateManagerRef, dispatch, navigate, locationId, state.currentLocation]);
 
   // Return the location controller API
   return {
     handleLocationButtonClick,
     handleCssTransitionComplete,
-    handleBackToHome
+    handleBackToMap
   };
 } 
