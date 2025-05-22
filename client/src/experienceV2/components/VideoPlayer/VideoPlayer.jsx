@@ -120,13 +120,13 @@ const VideoPlayer = ({
           )}
         </>
       ) : (
-        <div className="w-full h-full flex items-center justify-center text-netflix-red" style={{ 
+        // Empty container with same background as the video type would have
+        // No visible placeholder text to avoid disrupting the user experience
+        <div className="w-full h-full" style={{ 
           background: type === 'aerial'
             ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))'
             : 'black'
-        }}>
-          <p>Video Placeholder ({type})</p>
-        </div>
+        }} />
       )}
     </div>
   );

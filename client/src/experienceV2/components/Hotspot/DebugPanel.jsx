@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import logger from '../../utils/logger';
 
 const MODULE = 'DebugPanel';
@@ -14,8 +15,14 @@ const DebugPanel = ({
   videoDimensions,
   displayArea,
   formatNumber,
-  svgViewBox
+  svgViewBox,
+  currentVideo,
+  currentLocationId,
+  locations,
+  currentLocation
 }) => {
+  const navigate = useNavigate();
+  
   // State to track caching info
   const [cacheInfo, setCacheInfo] = useState({
     serviceWorkerActive: false,
@@ -23,42 +30,64 @@ const DebugPanel = ({
     cacheNames: []
   });
   
+  // Handle return to main menu
+  const handleReturnToMainMenu = useCallback((e) => {
+    // Stop propagation to prevent click from being handled by parent elements
+    e.stopPropagation();
+    
+    logger.info(MODULE, 'Returning to main menu via debug button');
+    navigate('/');
+  }, [navigate]);
+  
   // Function to fetch caching information
   useEffect(() => {
     if ('serviceWorker' in navigator && 'caches' in window) {
-      // Check for active service worker
-      navigator.serviceWorker.getRegistration().then(registration => {
-        const isActive = !!registration && !!registration.active;
-        setCacheInfo(prev => ({ ...prev, serviceWorkerActive: isActive }));
-        
-        if (isActive) {
-          logger.debug(MODULE, 'Service worker is active');
-        }
-      }).catch(err => {
-        logger.error(MODULE, 'Error checking service worker status:', err);
-      });
-      
-      // Get cache names
-      caches.keys().then(cacheNames => {
-        setCacheInfo(prev => ({ ...prev, cacheNames }));
-        
-        // For each cache, count entries
-        let totalCachedResources = 0;
-        const promises = cacheNames.map(name => 
-          caches.open(name).then(cache => 
-            cache.keys().then(keys => {
-              totalCachedResources += keys.length;
-              return keys.length;
-            })
-          )
-        );
-        
-        Promise.all(promises).then(() => {
-          setCacheInfo(prev => ({ ...prev, cachedResources: totalCachedResources }));
+      const checkSwStatus = () => {
+        // Check for active service worker
+        navigator.serviceWorker.getRegistration().then(registration => {
+          const isActive = !!registration && !!registration.active;
+          setCacheInfo(prev => ({ ...prev, serviceWorkerActive: isActive }));
+          
+          if (isActive) {
+            logger.debug(MODULE, 'Service worker is active');
+          }
+        }).catch(err => {
+          logger.error(MODULE, 'Error checking service worker status:', err);
         });
-      }).catch(err => {
-        logger.error(MODULE, 'Error retrieving cache information:', err);
-      });
+        
+        // Get cache names
+        caches.keys().then(cacheNames => {
+          setCacheInfo(prev => ({ ...prev, cacheNames }));
+          
+          // For each cache, count entries
+          let totalCachedResources = 0;
+          const promises = cacheNames.map(name => 
+            caches.open(name).then(cache => 
+              cache.keys().then(keys => {
+                totalCachedResources += keys.length;
+                return keys.length;
+              })
+            )
+          );
+          
+          Promise.all(promises).then(() => {
+            setCacheInfo(prev => ({ ...prev, cachedResources: totalCachedResources }));
+          });
+        }).catch(err => {
+          logger.error(MODULE, 'Error retrieving cache information:', err);
+        });
+      };
+      
+      // Initial check
+      checkSwStatus();
+      
+      // Set up interval to check periodically
+      const intervalId = setInterval(checkSwStatus, 5000);
+      
+      // Cleanup function
+      return () => {
+        clearInterval(intervalId);
+      };
     }
   }, []);
   
@@ -90,6 +119,31 @@ const DebugPanel = ({
   // Get hotspot counts for debug info
   const hotspotCounts = getHotspotCounts();
   
+  // Get location info
+  const getLocationInfo = () => {
+    if (!locations || locations.length === 0) {
+      return { total: 0, current: null };
+    }
+    
+    // If we have a direct currentLocation object, use that
+    if (currentLocation) {
+      return {
+        total: locations.length,
+        current: currentLocation
+      };
+    }
+    
+    // Otherwise look it up from the locations array
+    const foundLocation = locations.find(loc => loc._id === currentLocationId);
+    
+    return {
+      total: locations.length,
+      current: foundLocation
+    };
+  };
+  
+  const locationInfo = getLocationInfo();
+  
   return (
     <div className="debug-panel">
       <h3>Debug Info</h3>
@@ -120,7 +174,24 @@ const DebugPanel = ({
           <li>Display: {formatNumber(videoDimensions.width)}×{formatNumber(videoDimensions.height)}</li>
           <li>Natural: {formatNumber(videoDimensions.naturalWidth)}×{formatNumber(videoDimensions.naturalHeight)}</li>
           <li>Aspect: {formatNumber(videoDimensions.aspectRatio)} (display), {formatNumber(videoDimensions.naturalAspect)} (natural)</li>
+          <li>Current: {currentVideo || 'unknown'}</li>
         </ul>
+      </div>
+      
+      {/* Location info section */}
+      <div className="section">
+        <strong>Locations:</strong>
+        <ul>
+          <li>Total: {locationInfo.total}</li>
+          <li>Current: {locationInfo.current ? locationInfo.current.name : 'Unknown'}</li>
+          <li>Current ID: {currentLocationId || 'Not set'}</li>
+        </ul>
+        {locationInfo.current && locationInfo.current.description && (
+          <div className="location-description">
+            <strong>Description:</strong>
+            <p>{locationInfo.current.description}</p>
+          </div>
+        )}
       </div>
       
       {/* Display area info */}
@@ -151,6 +222,21 @@ const DebugPanel = ({
           <li>Cache Names: {cacheInfo.cacheNames.length > 0 ? 
             cacheInfo.cacheNames.join(', ') : 'None found'}</li>
         </ul>
+      </div>
+      
+      {/* Debug Actions */}
+      <div className="section actions" onClick={(e) => e.stopPropagation()}>
+        <strong>Actions:</strong>
+        <div className="debug-buttons" onClick={(e) => e.stopPropagation()}>
+          <button 
+            className="debug-button primary"
+            onClick={handleReturnToMainMenu}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            Return to Main Menu
+          </button>
+        </div>
       </div>
       
       <div className="keyboard-hint">

@@ -142,10 +142,14 @@ self.addEventListener('fetch', (event) => {
           console.log('[Service Worker] Fetching video from network:', url.pathname);
           return fetch(event.request).then(networkResponse => {
             // Make a copy of the response to cache
-            if (networkResponse.ok) {
+            // Only cache full responses (status 200), not partial content (status 206)
+            if (networkResponse.status === 200) {
               const clonedResponse = networkResponse.clone();
               cache.put(event.request, clonedResponse);
               console.log('[Service Worker] Cached video:', url.pathname);
+            } else if (networkResponse.status === 206) {
+              // Log that we received a partial response that can't be cached
+              console.log('[Service Worker] Received partial content (206) that cannot be cached:', url.pathname);
             }
             return networkResponse;
           });
@@ -199,11 +203,22 @@ self.addEventListener('message', (event) => {
         // Make sure we have a valid URL
         if (!video.url) return Promise.resolve();
         
-        return fetch(video.url)
+        return fetch(video.url, {
+          // Use a fetch request without range headers to ensure we get a full response
+          headers: {
+            'Range': '' // Empty range header to prevent partial responses
+          }
+        })
           .then(response => {
             if (!response.ok) {
               throw new Error(`Failed to fetch ${video.url}: ${response.status}`);
             }
+            
+            // Only cache full responses (status 200), not partial content (status 206)
+            if (response.status === 206) {
+              throw new Error(`Received partial content (206) that cannot be cached for ${video.url}`);
+            }
+            
             return cache.put(video.url, response);
           })
           .then(() => {

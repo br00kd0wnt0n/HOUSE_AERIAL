@@ -161,17 +161,9 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
       {availableLocations.map(location => {
         const assets = buttonAssets[location._id];
         
-        // If no assets found, render a fallback button
+        // If no assets found, don't render anything for this location
         if (!assets) {
-          return (
-            <div 
-              key={`${location._id}-${currentLocationId}`}
-              className="w-[140px] h-[140px] bg-netflix-red rounded-full flex items-center justify-center cursor-pointer hover:bg-netflix-red/80 transition-all"
-              onClick={() => onClick(location)}
-            >
-              <span className="text-white text-xl font-bold">{location.name.substring(0, 2)}</span>
-            </div>
-          );
+          return null;
         }
         
         // Render the location button with assets

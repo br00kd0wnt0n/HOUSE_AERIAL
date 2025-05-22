@@ -72,15 +72,7 @@ const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, de
 
   // Render fallback if assets are missing
   if (loadError) {
-    return (
-      <div 
-        className="location-button-fallback"
-        onClick={handleClick}
-        aria-label={`Go to ${location?.name || 'unknown location'}`}
-      >
-        <span className="location-button-fallback-text">{location?.name?.substring(0, 2) || '??'}</span>
-      </div>
-    );
+    return null; // Don't render anything if assets are missing
   }
 
   return (
@@ -109,13 +101,6 @@ const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, de
       {debugMode && (
         <div className="location-button-debug-label">
           {location?.name}
-        </div>
-      )}
-      
-      {/* Loading overlay */}
-      {!imagesLoaded && (
-        <div className="location-button-loading">
-          <div className="location-button-loading-spinner"></div>
         </div>
       )}
     </div>
