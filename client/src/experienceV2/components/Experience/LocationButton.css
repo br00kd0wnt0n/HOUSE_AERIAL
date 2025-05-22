@@ -16,6 +16,9 @@
   display: block;
   cursor: pointer;
   transition: transform var(--location-button-transition-duration) ease;
+  opacity: 1; /* Ensure full opacity by default */
+  visibility: visible; /* Ensure visibility by default */
+  will-change: transform; /* Optimize for GPU acceleration */
 }
 
 /* Hover effect using CSS instead of React state */
@@ -32,6 +35,10 @@
   height: 100%;
   object-fit: contain;
   transition: opacity var(--location-button-transition-duration) ease;
+  will-change: opacity; /* Optimize for GPU acceleration */
+  backface-visibility: hidden; /* Prevent flickering in some browsers */
+  -webkit-backface-visibility: hidden; /* Safari support */
+  transform: translateZ(0); /* Force GPU acceleration */
 }
 
 /* OFF state (shown by default) */

@@ -17,7 +17,7 @@ export function useHotspotDebug({ externalDebugMode = false }) {
   useEffect(() => {
     // Debug keyboard shortcut (Ctrl+Shift+D)
     const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
         setInternalDebugMode(prev => {
           const newValue = !prev;
           logger.info(MODULE, `Debug mode ${newValue ? 'enabled' : 'disabled'} (internal)`);

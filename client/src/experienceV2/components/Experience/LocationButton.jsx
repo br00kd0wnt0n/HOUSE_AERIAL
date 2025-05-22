@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { cn } from '../../../lib/utils';
 import logger from '../../utils/logger';
 import './LocationButton.css';
@@ -6,39 +6,13 @@ import './LocationButton.css';
 /**
  * LocationButton.jsx - Component for rendering location buttons in the V2 experience
  * Shows ON/OFF state on hover and handles button asset loading
+ * 
+ * Images are now preloaded at the parent level (LocationNavigation) to prevent flickering
  */
 const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, debugMode }) => {
   const MODULE = 'LocationButton';
-  const [imagesLoaded, setImagesLoaded] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const loadingTimeoutRef = useRef(null);
-
-  // Check if we have valid button assets and set a timeout for loading fallback
-  useEffect(() => {
-    if (!onButtonAssets?.accessUrl || !offButtonAssets?.accessUrl) {
-      logger.warn(MODULE, `Missing button assets for location: ${location?.name || 'unknown'}`);
-      setLoadError(true);
-    } else {
-      logger.debug(MODULE, `Button assets found for ${location?.name}: ${onButtonAssets?.accessUrl} / ${offButtonAssets?.accessUrl}`);
-      setLoadError(false);
-      
-      // Set a timeout for loading in case images take too long
-      loadingTimeoutRef.current = setTimeout(() => {
-        if (!imagesLoaded) {
-          logger.warn(MODULE, `Loading timeout for location button: ${location?.name}`);
-          setImagesLoaded(true); // Force loaded state after timeout
-        }
-      }, 5000); // 5 second timeout
-    }
-    
-    // Clear timeout on unmount or when assets change
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-    };
-  }, [onButtonAssets, offButtonAssets, location, imagesLoaded]);
-
+  
+  // Handle button click
   const handleClick = () => {
     if (onClick && location) {
       onClick(location);
@@ -46,33 +20,9 @@ const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, de
     }
   };
 
-  // Track loading of both images
-  const [onImageLoaded, setOnImageLoaded] = useState(false);
-  const [offImageLoaded, setOffImageLoaded] = useState(false);
-  
-  // Update overall loading state when both images are loaded
-  useEffect(() => {
-    if (onImageLoaded && offImageLoaded) {
-      setImagesLoaded(true);
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-    }
-  }, [onImageLoaded, offImageLoaded]);
-
-  const handleOnImageLoad = () => {
-    logger.debug(MODULE, `ON button image loaded for location: ${location?.name}`);
-    setOnImageLoaded(true);
-  };
-  
-  const handleOffImageLoad = () => {
-    logger.debug(MODULE, `OFF button image loaded for location: ${location?.name}`);
-    setOffImageLoaded(true);
-  };
-
-  // Render fallback if assets are missing
-  if (loadError) {
-    return null; // Don't render anything if assets are missing
+  // Render fallback if assets are missing (should rarely happen since parent checks)
+  if (!onButtonAssets?.accessUrl || !offButtonAssets?.accessUrl) {
+    return null;
   }
 
   return (
@@ -86,7 +36,6 @@ const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, de
         src={offButtonAssets?.accessUrl} 
         alt={`${location?.name || 'Location'} Button`}
         className={cn('location-button-image location-button-image-off')}
-        onLoad={handleOffImageLoad}
       />
       
       {/* ON state (shown when hovered) */}
@@ -94,7 +43,6 @@ const LocationButton = ({ location, onButtonAssets, offButtonAssets, onClick, de
         src={onButtonAssets?.accessUrl} 
         alt={`${location?.name || 'Location'} Button Active`}
         className={cn('location-button-image location-button-image-on')}
-        onLoad={handleOnImageLoad}
       />
       
       {/* Debug information */}

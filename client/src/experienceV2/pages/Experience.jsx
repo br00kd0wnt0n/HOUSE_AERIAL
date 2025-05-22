@@ -1,4 +1,4 @@
-import React, { useReducer, useState, useEffect, useCallback } from 'react';
+import React, { useReducer, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useExperience } from '../context/ExperienceContext';
 import VideoPlayer from '../components/VideoPlayer/VideoPlayer';
@@ -137,6 +137,10 @@ const Experience = () => {
   // Fade to black effect callback
   const [fadeToBlackCallback, setFadeToBlackCallback] = useState(null);
   
+  // Add state to control navigation visibility to prevent flickering
+  const [navButtonsReady, setNavButtonsReady] = useState(false);
+  const navMountedRef = useRef(false);
+  
   // Ensure all locations are loaded when component mounts (especially for direct URL access)
   useEffect(() => {
     // If locations array is empty, load all locations
@@ -183,6 +187,9 @@ const Experience = () => {
   const startFadeToBlack = useCallback((callback) => {
     logger.info(MODULE, 'Starting fade to black effect');
     
+    // Hide nav buttons immediately when fade starts
+    setNavButtonsReady(false);
+    
     // Store the callback to be executed after fade completes
     setFadeToBlackCallback(() => callback);
     
@@ -209,10 +216,41 @@ const Experience = () => {
     startFadeToBlack
   });
   
+  // Only show navigation buttons after initial render and when transitions complete
+  useEffect(() => {
+    // On initial mount, delay showing buttons slightly
+    if (!navMountedRef.current) {
+      // Mark as mounted
+      navMountedRef.current = true;
+      
+      // Delay showing nav buttons on first render to avoid flickering
+      const timer = setTimeout(() => {
+        if (!state.inLocationTransition && !state.fadeToBlackActive) {
+          setNavButtonsReady(true);
+        }
+      }, 500); // Short delay to ensure page is stable
+      
+      return () => clearTimeout(timer);
+    }
+    
+    // Otherwise, handle showing buttons based on transition state
+    if (state.inLocationTransition || state.fadeToBlackActive) {
+      // Hide buttons during transitions
+      setNavButtonsReady(false);
+    } else if (state.currentVideo === 'aerial' && !state.inPlaylistMode) {
+      // Show buttons after a short delay when returning to aerial view
+      const timer = setTimeout(() => {
+        setNavButtonsReady(true);
+      }, 300); // Short delay after transition completes
+      
+      return () => clearTimeout(timer);
+    }
+  }, [state.inLocationTransition, state.fadeToBlackActive, state.currentVideo, state.inPlaylistMode]);
+  
   // Set up debug mode keyboard shortcut
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
         setDebugMode(prev => {
           const newValue = !prev;
           // Only log in development mode to avoid cluttering production logs
@@ -303,14 +341,14 @@ const Experience = () => {
           />
         )}
         
-        {/* Location navigation buttons - only show during aerial view */}
-        {state.currentVideo === 'aerial' && !state.inPlaylistMode && (
+        {/* Location navigation buttons - only show during aerial view and when nav is ready */}
+        {state.currentVideo === 'aerial' && !state.inPlaylistMode && navButtonsReady && (
           <LocationNavigation 
             locations={locations}
             currentLocationId={state.currentLocation?._id || locationId}
             onClick={locationController.handleLocationButtonClick}
             debugMode={debugMode}
-            key={`location-nav-${state.currentLocation?._id || locationId}-${Date.now()}`}
+            key={`location-nav-${state.currentLocation?._id || locationId}`}
           />
         )}
         
