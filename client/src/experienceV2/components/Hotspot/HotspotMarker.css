@@ -10,6 +10,8 @@
   pointer-events: all;
   z-index: 5;
   cursor: pointer;
+  /* Add touch-action for better touch handling */
+  touch-action: manipulation;
 }
 
 .map-pin-container {
@@ -22,6 +24,8 @@
       var(--hotspot-transition-easing),
     transform var(--hotspot-transition-duration)
       var(--hotspot-transition-easing);
+  /* Add touch-action for better touch handling */
+  touch-action: manipulation;
 }
 
 .map-pin-container:hover {

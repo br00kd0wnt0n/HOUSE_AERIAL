@@ -35,6 +35,13 @@ const HotspotPolygon = ({
     hotspot.coordinates && hotspot.coordinates.length >= 3
   );
 
+  // Handle both click and touch events for better mobile experience
+  const handleInteraction = (e, hotspot) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onHotspotClick(hotspot);
+  };
+
   return (
     <svg 
       className={cn("hotspot-svg", { "debug-mode": debugMode })}
@@ -58,10 +65,8 @@ const HotspotPolygon = ({
           key={`hotspot-polygon-${hotspot._id}`}
           className={getHotspotPolygonClass(hotspot)}
           points={createSvgPoints(hotspot.coordinates)}
-          onClick={(e) => {
-            e.stopPropagation();
-            onHotspotClick(hotspot);
-          }}
+          onClick={(e) => handleInteraction(e, hotspot)}
+          onTouchStart={(e) => handleInteraction(e, hotspot)}
         />
       ))}
     </svg>

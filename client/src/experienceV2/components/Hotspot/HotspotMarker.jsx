@@ -11,6 +11,13 @@ const HotspotMarker = ({
   onHotspotClick,
   debugMode
 }) => {
+  // Handle both click and touch events for better mobile experience
+  const handleInteraction = (e, hotspot) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onHotspotClick(hotspot);
+  };
+
   return (
     <>
       {hotspots.map(hotspot => {
@@ -25,7 +32,8 @@ const HotspotMarker = ({
               left: position.left,
               top: position.top
             }}
-            onClick={() => onHotspotClick(hotspot)}
+            onClick={(e) => handleInteraction(e, hotspot)}
+            onTouchStart={(e) => handleInteraction(e, hotspot)}
           >
             {/* Debug indicator for hotspot position */}
             {debugMode && (

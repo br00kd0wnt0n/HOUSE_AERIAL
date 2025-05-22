@@ -9,7 +9,8 @@
   z-index: 10;
   /* Allow clicks to pass through by default, components inside will set pointer-events back to auto */
   pointer-events: none;
-  touch-action: none;
+  /* Change from 'none' to 'manipulation' to allow for basic touch interactions */
+  touch-action: manipulation;
 }
 
 /* Ensure SVG elements capture pointer events */
@@ -18,6 +19,8 @@
 .hotspot-pin,
 .hotspot-marker {
   pointer-events: auto;
+  /* For touch devices, add specific touch-action */
+  touch-action: manipulation;
 }
 
 /* SVG contains the polygon hotspots */
@@ -45,6 +48,8 @@
       var(--hotspot-transition-easing),
     fill var(--hotspot-transition-duration) var(--hotspot-transition-easing),
     stroke var(--hotspot-transition-duration) var(--hotspot-transition-easing);
+  /* Add touch-action property to polygon elements for better touch handling */
+  touch-action: manipulation;
 }
 
 /* Only show hover effect in debug mode or when cursor hovers */
