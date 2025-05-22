@@ -79,7 +79,22 @@ const VideoPlayer = ({
     position: isTransition ? 'fixed' : 'relative',
     inset: isTransition ? '0' : 'auto',
     width: isTransition ? '100%' : '100%',
-    height: isTransition ? '100%' : '100%'
+    height: isTransition ? '100%' : '100%',
+    // Add touch handling
+    touchAction: 'manipulation',
+    // Center content
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  };
+  
+  // Enhanced video styles for better mobile handling
+  const enhancedVideoStyles = {
+    ...videoStyles,
+    touchAction: 'manipulation', // Improve touch handling
+    WebkitTapHighlightColor: 'transparent', // Remove tap highlight on iOS
+    WebkitUserSelect: 'none', // Prevent text selection on touch
+    userSelect: 'none', // Prevent text selection on touch
   };
   
   return (
@@ -94,8 +109,10 @@ const VideoPlayer = ({
             ref={videoRef}
             src={src}
             className={cn("video-element", isTransition ? "w-full h-full object-cover" : "")}
-            style={videoStyles}
+            style={enhancedVideoStyles}
             playsInline
+            webkitPlaysinline="true"
+            x5Playsinline="true"
             muted={type === 'aerial' || type === 'transition' || type.includes('transition')}
             loop={type === 'aerial'}
             autoPlay={isPlaying}
@@ -103,6 +120,9 @@ const VideoPlayer = ({
             onCanPlayThrough={handleVideoLoaded}
             onError={handleVideoError}
             preload="auto"
+            playbackRate={1.0}
+            disablePictureInPicture
+            controlsList="nodownload nofullscreen noremoteplayback"
           />
           
           {/* Error indicator */}

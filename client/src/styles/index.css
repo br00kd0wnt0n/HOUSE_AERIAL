@@ -46,13 +46,31 @@ html {
   font-family: Arial, sans-serif;
   background-color: #000;
   color: #fff;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden; /* Prevent scrolling on all devices */
+  position: fixed; /* Keep the body fixed for touch devices */
+  touch-action: manipulation; /* Improve touch handling */
+  -webkit-text-size-adjust: 100%; /* Prevent font size adjustment on orientation change */
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on iOS */
+  -webkit-touch-callout: none; /* Disable callout on long-press */
+  user-select: none; /* Prevent text selection */
+  -webkit-user-select: none; /* Prevent text selection */
 }
 
 #root {
   height: 100%;
   width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Safe area handling for notched devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }
 
 /* Menu page styling */

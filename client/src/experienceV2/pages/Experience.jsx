@@ -238,106 +238,117 @@ const Experience = () => {
   }, []);
   
   return (
-    <div className="relative w-screen h-screen overflow-hidden" style={{ 
+    <div className="fixed inset-0 w-screen h-screen overflow-hidden" style={{ 
       background: state.currentVideo === 'aerial' && !state.inPlaylistMode
         ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))'
-        : 'black'
+        : 'black',
+      // Add safe area insets for devices with notches
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      paddingLeft: 'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
+      // Ensure content is centered
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
     }}>
-      {/* Main video player */}
-      <VideoPlayer 
-        src={state.videoUrl}
-        type={state.currentVideo}
-        onEnded={videoController.handleVideoEnded}
-        onLoadStart={videoController.handleVideoLoadStart}
-        onLoadComplete={videoController.handleVideoLoadComplete}
-        onPlaying={videoController.handleVideoPlaying}
-        isPlaying={state.isPlaying}
-        onVideoRef={videoController.handleVideoRef}
-        key={`video-player-${state.videoUrl}`}
-      />
-      
-      {/* CSS Transition Effect - shown when in location transition but no video */}
-      <TransitionEffect 
-        isActive={state.inLocationTransition && state.currentVideo !== 'locationTransition'}
-        onTransitionComplete={locationController.handleCssTransitionComplete}
-        duration={2000}
-        sourceLocationName={state.currentLocation?.name}
-        destinationLocationName={state.destinationLocation?.name}
-      />
-      
-      {/* Fade to Black Effect - shown before hotspot or location transitions */}
-      <FadeToBlackEffect
-        isActive={state.fadeToBlackActive}
-        onComplete={handleFadeToBlackComplete}
-        duration={1000} // 1 second fade as requested
-      />
-      
-      {/* Hotspot overlay - only shown for aerial video when playing */}
-      {state.currentVideo === 'aerial' && state.isVideoPlaying && videoController.videoRef.current && (
-        <HotspotOverlay 
-          hotspots={state.hotspots}
-          onHotspotClick={hotspotController.handleHotspotClick}
-          videoRef={videoController.videoRef}
-          debugMode={debugMode}
-          currentVideo={state.currentVideo}
-          currentLocationId={state.currentLocation?._id || locationId}
-          key={`hotspot-overlay-${state.videoUrl}`}
+      <div className="relative w-full h-full overflow-hidden">
+        {/* Main video player */}
+        <VideoPlayer 
+          src={state.videoUrl}
+          type={state.currentVideo}
+          onEnded={videoController.handleVideoEnded}
+          onLoadStart={videoController.handleVideoLoadStart}
+          onLoadComplete={videoController.handleVideoLoadComplete}
+          onPlaying={videoController.handleVideoPlaying}
+          isPlaying={state.isPlaying}
+          onVideoRef={videoController.handleVideoRef}
+          key={`video-player-${state.videoUrl}`}
         />
-      )}
-      
-      {/* Info panel for secondary hotspots */}
-      {state.activeSecondaryHotspot && state.currentVideo === 'aerial' && (
-        <InfoPanel 
-          hotspot={state.activeSecondaryHotspot}
-          onClose={hotspotController.handleInfoPanelClose}
+        
+        {/* CSS Transition Effect - shown when in location transition but no video */}
+        <TransitionEffect 
+          isActive={state.inLocationTransition && state.currentVideo !== 'locationTransition'}
+          onTransitionComplete={locationController.handleCssTransitionComplete}
+          duration={2000}
+          sourceLocationName={state.currentLocation?.name}
+          destinationLocationName={state.destinationLocation?.name}
         />
-      )}
-      
-      {/* Location navigation buttons - only show during aerial view */}
-      {state.currentVideo === 'aerial' && !state.inPlaylistMode && (
-        <LocationNavigation 
-          locations={locations}
-          currentLocationId={state.currentLocation?._id || locationId}
-          onClick={locationController.handleLocationButtonClick}
-          debugMode={debugMode}
-          key={`location-nav-${state.currentLocation?._id || locationId}-${Date.now()}`}
+        
+        {/* Fade to Black Effect - shown before hotspot or location transitions */}
+        <FadeToBlackEffect
+          isActive={state.fadeToBlackActive}
+          onComplete={handleFadeToBlackComplete}
+          duration={1000} // 1 second fade as requested
         />
-      )}
-      
-      {/* Location Banner - show in aerial view */}
-      {state.currentVideo === 'aerial' && (
-        <LocationBanner 
-          locationId={state.currentLocation?._id || locationId} 
-          key={`location-banner-${state.currentLocation?._id || locationId}`}
-        />
-      )}
-      
-      {/* Play button overlay if autoplay fails - show only if not playing and not loading */}
-      {!state.isPlaying && state.videoUrl && (
-        <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/40">
-          <button 
-            className="w-24 h-24 bg-netflix-red rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors"
-            onClick={videoController.handlePlayClick}
-          >
-            <div className="w-0 h-0 border-t-[15px] border-t-transparent border-b-[15px] border-b-transparent border-l-[25px] border-l-white ml-2"></div>
-          </button>
-        </div>
-      )}
-      
-      {/* UI Controls - Back to Map button with fixed positioning */}
-      {/* Only show when in playlist mode or not in aerial view */}
-      {(state.inPlaylistMode || state.currentVideo !== 'aerial') && (
-        <div className="fixed top-4 right-4 z-30">
-          <button 
-            className="w-12 h-12 bg-netflix-red text-white rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors text-3xl font-bold"
-            onClick={locationController.handleBackToMap}
-            aria-label="Back to Map"
-            title="Back to Map"
-          >
-            ×
-          </button>
-        </div>
-      )}
+        
+        {/* Hotspot overlay - only shown for aerial video when playing */}
+        {state.currentVideo === 'aerial' && state.isVideoPlaying && videoController.videoRef.current && (
+          <HotspotOverlay 
+            hotspots={state.hotspots}
+            onHotspotClick={hotspotController.handleHotspotClick}
+            videoRef={videoController.videoRef}
+            debugMode={debugMode}
+            currentVideo={state.currentVideo}
+            currentLocationId={state.currentLocation?._id || locationId}
+            key={`hotspot-overlay-${state.videoUrl}`}
+          />
+        )}
+        
+        {/* Info panel for secondary hotspots */}
+        {state.activeSecondaryHotspot && state.currentVideo === 'aerial' && (
+          <InfoPanel 
+            hotspot={state.activeSecondaryHotspot}
+            onClose={hotspotController.handleInfoPanelClose}
+          />
+        )}
+        
+        {/* Location navigation buttons - only show during aerial view */}
+        {state.currentVideo === 'aerial' && !state.inPlaylistMode && (
+          <LocationNavigation 
+            locations={locations}
+            currentLocationId={state.currentLocation?._id || locationId}
+            onClick={locationController.handleLocationButtonClick}
+            debugMode={debugMode}
+            key={`location-nav-${state.currentLocation?._id || locationId}-${Date.now()}`}
+          />
+        )}
+        
+        {/* Location Banner - show in aerial view */}
+        {state.currentVideo === 'aerial' && (
+          <LocationBanner 
+            locationId={state.currentLocation?._id || locationId} 
+            key={`location-banner-${state.currentLocation?._id || locationId}`}
+          />
+        )}
+        
+        {/* Play button overlay if autoplay fails - show only if not playing and not loading */}
+        {!state.isPlaying && state.videoUrl && (
+          <div className="absolute inset-0 flex items-center justify-center z-30 bg-black/40">
+            <button 
+              className="w-24 h-24 bg-netflix-red rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors"
+              onClick={videoController.handlePlayClick}
+            >
+              <div className="w-0 h-0 border-t-[15px] border-t-transparent border-b-[15px] border-b-transparent border-l-[25px] border-l-white ml-2"></div>
+            </button>
+          </div>
+        )}
+        
+        {/* UI Controls - Back to Map button with fixed positioning */}
+        {/* Only show when in playlist mode or not in aerial view */}
+        {(state.inPlaylistMode || state.currentVideo !== 'aerial') && (
+          <div className="fixed top-4 right-4 z-30">
+            <button 
+              className="w-12 h-12 bg-netflix-red text-white rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors text-3xl font-bold"
+              onClick={locationController.handleBackToMap}
+              aria-label="Back to Map"
+              title="Back to Map"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

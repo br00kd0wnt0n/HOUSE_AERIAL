@@ -2,8 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Netflix House Experience</title>
+    <style>
+      /* Prevent scroll on mobile devices */
+      html, body {
+        position: fixed;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        touch-action: manipulation;
+        -webkit-overflow-scrolling: none;
+      }
+      #root {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        position: relative;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
