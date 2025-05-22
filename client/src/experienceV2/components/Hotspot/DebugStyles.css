@@ -98,7 +98,7 @@
   position: absolute;
   top: var(--hotspot-debug-padding);
   left: var(--hotspot-debug-padding);
-  z-index: 50;
+  z-index: 1000;
   background-color: rgba(
     var(--hotspot-background-color-rgb),
     var(--hotspot-debug-background-opacity)
@@ -106,12 +106,14 @@
   color: var(--hotspot-text-color);
   padding: var(--hotspot-debug-padding);
   border-radius: var(--hotspot-debug-border-radius);
-  max-width: var(--hotspot-debug-panel-max-width);
-  max-height: 80vh;
+  min-width: 450px;
+  max-width: 600px;
+  max-height: 100vh;
   overflow: auto;
   font-size: var(--hotspot-debug-font-size);
   font-family: monospace;
   box-shadow: var(--hotspot-debug-shadow);
+  pointer-events: auto;
 }
 
 .debug-panel h3 {
@@ -163,4 +165,78 @@
 /* Word wrap for long URLs or cache names */
 .debug-panel li {
   word-break: break-word;
+}
+
+/* Debug buttons */
+.debug-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+
+.debug-button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: center;
+  transition: background-color 0.2s, opacity 0.2s;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1001;
+}
+
+.debug-button:hover {
+  opacity: 0.9;
+}
+
+.debug-button:active {
+  opacity: 0.8;
+}
+
+.debug-button.primary {
+  background-color: #1a73e8;
+  color: white;
+}
+
+.debug-button.danger {
+  background-color: #e50914; /* Netflix red */
+  color: white;
+}
+
+.debug-button.success {
+  background-color: #34a853; /* Green */
+  color: white;
+}
+
+.debug-info-text {
+  font-size: 10px;
+  margin-top: 8px;
+  opacity: 0.7;
+  text-align: center;
+  font-style: italic;
+}
+
+.location-description {
+  margin-top: 8px;
+  border-top: 1px dotted rgba(255, 255, 255, 0.1);
+  padding-top: 6px;
+}
+
+.location-description strong {
+  font-size: 11px;
+  opacity: 0.9;
+  color: #1a73e8;
+}
+
+.location-description p {
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.4;
+  font-style: italic;
+  opacity: 0.9;
 }

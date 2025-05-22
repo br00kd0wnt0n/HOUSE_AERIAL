@@ -123,7 +123,8 @@ const Experience = () => {
   const { 
     locations,
     serviceWorkerReady,
-    videoPreloaderRef
+    videoPreloaderRef,
+    loadLocations,
   } = useExperience();
   
   // Use reducer for state management
@@ -134,6 +135,21 @@ const Experience = () => {
   
   // Fade to black effect callback
   const [fadeToBlackCallback, setFadeToBlackCallback] = useState(null);
+  
+  // Ensure all locations are loaded when component mounts (especially for direct URL access)
+  useEffect(() => {
+    // If locations array is empty, load all locations
+    if (locations.length === 0) {
+      logger.info(MODULE, 'No locations found in context, loading all locations');
+      loadLocations().then(loadedLocations => {
+        logger.info(MODULE, `Loaded ${loadedLocations.length} locations for navigation`);
+      }).catch(err => {
+        logger.error(MODULE, 'Failed to load locations:', err);
+      });
+    } else {
+      logger.debug(MODULE, `Locations already loaded: ${locations.length}`);
+    }
+  }, [locations, loadLocations]);
   
   // Handle fade to black completion
   const handleFadeToBlackComplete = useCallback(() => {
@@ -262,6 +278,8 @@ const Experience = () => {
           onHotspotClick={hotspotController.handleHotspotClick}
           videoRef={videoController.videoRef}
           debugMode={debugMode}
+          currentVideo={state.currentVideo}
+          currentLocationId={state.currentLocation?._id || locationId}
           key={`hotspot-overlay-${state.videoUrl}`}
         />
       )}
@@ -309,16 +327,6 @@ const Experience = () => {
           >
             ×
           </button>
-        </div>
-      )}
-      
-      {/* Debug info - only shown in debug mode */}
-      {debugMode && state.currentLocation && !state.inPlaylistMode && (
-            <div className="absolute bottom-8 left-8 z-10 bg-black/70 p-4 rounded text-white">
-          <h2 className="text-2xl font-bold">{state.currentLocation.name}</h2>
-          {state.currentLocation.description && (
-            <p className="mt-2 text-sm max-w-md">{state.currentLocation.description}</p>
-          )}
         </div>
       )}
     </div>

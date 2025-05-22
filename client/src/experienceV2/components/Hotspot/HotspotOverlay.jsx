@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useDimensionCalculator } from '../../hooks/useDimensionCalculator';
 import { useHotspotDebug } from '../../hooks/useHotspotDebug';
+import { useExperience } from '../../context/ExperienceContext';
 import HotspotPolygon from './HotspotPolygon';
 import HotspotMarker from './HotspotMarker';
 import DebugPanel from './DebugPanel';
@@ -14,9 +15,27 @@ import './HotspotOverlay.css';
  * HotspotOverlay.jsx - Component for rendering hotspots in the V2 experience
  * Uses a fixed coordinate system to match hotspot positions from the admin panel
  */
-const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externalDebugMode }) => {
+const HotspotOverlay = ({ 
+  hotspots, 
+  onHotspotClick, 
+  videoRef, 
+  debugMode: externalDebugMode,
+  currentVideo,
+  currentLocationId
+}) => {
   // Module name for logging
   const MODULE = 'HotspotOverlay';
+  
+  // Get locations from context
+  const { locations } = useExperience();
+  
+  // Get current location data
+  const currentLocation = useMemo(() => {
+    if (!locations || locations.length === 0 || !currentLocationId) {
+      return null;
+    }
+    return locations.find(loc => loc._id === currentLocationId) || null;
+  }, [locations, currentLocationId]);
   
   // Use custom hooks for dimensions and debug functionality
   const { 
@@ -94,15 +113,27 @@ const HotspotOverlay = ({ hotspots, onHotspotClick, videoRef, debugMode: externa
         debugMode={debugMode}
       />
       
-      {/* Enhanced Debug panel positioned at bottom right */}
+      {/* Enhanced Debug panel positioned at top left with proper event handling */}
       {debugMode && (
-        <DebugPanel
-          hotspots={hotspots}
-          videoDimensions={videoDimensions}
-          displayArea={displayArea}
-          formatNumber={formatNumber}
-          svgViewBox={svgViewBox}
-        />
+        <div className="debug-panel-container" style={{ 
+          position: 'absolute',
+          top: 0,
+          left: 0, 
+          zIndex: 1000,
+          pointerEvents: 'auto'
+        }}>
+          <DebugPanel
+            hotspots={hotspots}
+            videoDimensions={videoDimensions}
+            displayArea={displayArea}
+            formatNumber={formatNumber}
+            svgViewBox={svgViewBox}
+            currentVideo={currentVideo}
+            currentLocationId={currentLocationId}
+            locations={locations}
+            currentLocation={currentLocation}
+          />
+        </div>
       )}
     </div>
   );
