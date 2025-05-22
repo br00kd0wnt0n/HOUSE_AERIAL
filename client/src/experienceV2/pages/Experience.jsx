@@ -308,7 +308,7 @@ const Experience = () => {
         <TransitionEffect 
           isActive={state.inLocationTransition && state.currentVideo !== 'locationTransition'}
           onTransitionComplete={locationController.handleCssTransitionComplete}
-          duration={2000}
+          duration={400}
           sourceLocationName={state.currentLocation?.name}
           destinationLocationName={state.destinationLocation?.name}
         />
@@ -317,7 +317,7 @@ const Experience = () => {
         <FadeToBlackEffect
           isActive={state.fadeToBlackActive}
           onComplete={handleFadeToBlackComplete}
-          duration={1000} // 1 second fade as requested
+          duration={250} // Super snappy fade as requested
         />
         
         {/* Hotspot overlay - only shown for aerial video when playing */}

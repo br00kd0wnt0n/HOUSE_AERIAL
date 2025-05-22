@@ -22,12 +22,14 @@ const Home = () => {
     isLoading: globalLoading,
     setIsLoading: setGlobalLoading,
     locations,
-    preloadAllLocationsVideos,
-    loadingProgress: globalProgress
+    loadingProgress: globalProgress,
+    imageLoadingProgress,
+    preloadHotspotImages,
+    preloadAllLocationsVideos
   } = useExperience();
   
   const [error, setError] = useState(null);
-  const [loadingPhase, setLoadingPhase] = useState('initial'); // 'initial', 'locations', 'videos', 'complete'
+  const [loadingPhase, setLoadingPhase] = useState('initial'); // 'initial', 'locations', 'images', 'videos', 'complete'
   const [buttonAssets, setButtonAssets] = useState({});
   const [bannerAssets, setBannerAssets] = useState({});
   const [hoveredButton, setHoveredButton] = useState(null);
@@ -49,22 +51,43 @@ const Home = () => {
         return;
       }
       
-      // If service worker is ready, preload videos but don't block on failure
+      // Phase 2: Preload hotspot images if service worker is ready
       if (serviceWorkerReady) {
+        setLoadingPhase('images');
+        try {
+          logger.info(MODULE, 'Starting image preloading phase');
+          
+          // Preload hotspot images with service worker caching
+          await preloadHotspotImages(locationData, { 
+            useServiceWorker: true 
+          });
+          
+          logger.info(MODULE, 'Image preloading phase complete');
+        } catch (err) {
+          logger.error(MODULE, 'Error preloading images:', err);
+          setError('Failed to preload some images. The experience will continue with reduced performance.');
+          // Continue to next phase - don't block on image preload failure
+        }
+        
+        // Phase 3: Preload videos
         setLoadingPhase('videos');
         try {
-          // Add timeout of 5 minutes for the entire preloading operation
+          logger.info(MODULE, 'Starting video preloading phase');
+          
+          // Add timeout of 5 minutes for the entire video preloading operation
           const preloadTimeoutPromise = new Promise((_, reject) => {
             setTimeout(() => {
               reject(new Error('Preloading videos timed out'));
             }, 300000); // 5 minutes timeout (increased from 45 seconds)
           });
           
-          // Race between preloading and timeout
+          // Race between video preloading and timeout
           await Promise.race([
-            preloadAllLocationsVideos(),
+            preloadAllLocationsVideos(serviceWorkerReady, locationData),
             preloadTimeoutPromise
           ]);
+          
+          logger.info(MODULE, 'Video preloading phase complete');
         } catch (err) {
           logger.error(MODULE, 'Error preloading videos:', err);
           setError('Failed to preload some videos. The experience will continue with limited offline capability.');
@@ -81,7 +104,7 @@ const Home = () => {
       setLoadingPhase('complete');
       setGlobalLoading(false);
     }
-  }, [loadLocations, preloadAllLocationsVideos, serviceWorkerReady, setGlobalLoading]);
+  }, [loadLocations, preloadHotspotImages, preloadAllLocationsVideos, serviceWorkerReady, setGlobalLoading]);
 
   // Load locations on component mount
   useEffect(() => {
@@ -174,34 +197,68 @@ const Home = () => {
   };
 
   // Show loading screen during loading phases
-  const isLoadingActive = loadingPhase === 'initial' || loadingPhase === 'locations' || loadingPhase === 'videos' || globalLoading;
+  const isLoadingActive = loadingPhase === 'initial' || loadingPhase === 'locations' || loadingPhase === 'images' || loadingPhase === 'videos' || globalLoading;
   
   if (isLoadingActive) {
-    // Determine loading text based on phase
+    // Determine loading text and progress based on phase
     let loadingText = 'Preparing Experience';
-    if (loadingPhase === 'locations') loadingText = 'Loading Locations';
-    if (loadingPhase === 'videos') {
-      // More informative loading text for video phase
-      const percent = globalProgress.percent || 0;
-      const loaded = globalProgress.loaded || 0;
-      const total = globalProgress.total || 0;
+    let progress = 0;
+    let total = 0;
+    
+    if (loadingPhase === 'locations') {
+      loadingText = 'Loading Locations';
+      progress = 0;
+      total = 1;
+    } else if (loadingPhase === 'images') {
+      // Image preloading phase
+      const imagePercent = imageLoadingProgress.percent || 0;
+      const imageLoaded = imageLoadingProgress.loaded || 0;
+      const imageTotal = imageLoadingProgress.total || 0;
       
-      loadingText = `Preloading Videos for Offline Use (${loaded}/${total} videos)`;
+      loadingText = `Preloading UI Images for Offline Use`;
+      if (imageTotal > 0) {
+        loadingText += `\nImages: ${imageLoaded}/${imageTotal} (${imagePercent}%)`;
+      }
       
       // Add note about caching process
-      if (percent < 10) {
-        loadingText += ' - Starting cache process...';
-      } else if (percent < 100) {
-        loadingText += ' - Caching in progress...';
+      if (imagePercent < 10) {
+        loadingText += '\n- Starting image cache process...';
+      } else if (imagePercent < 100) {
+        loadingText += '\n- Caching images...';
       } else {
-        loadingText += ' - Finalizing...';
+        loadingText += '\n- Images cached successfully';
       }
+      
+      progress = imageLoaded;
+      total = imageTotal;
+    } else if (loadingPhase === 'videos') {
+      // Video preloading phase
+      const videoPercent = globalProgress.percent || 0;
+      const videoLoaded = globalProgress.loaded || 0;
+      const videoTotal = globalProgress.total || 0;
+      
+      loadingText = `Preloading Videos for Offline Use`;
+      if (videoTotal > 0) {
+        loadingText += `\nVideos: ${videoLoaded}/${videoTotal} (${videoPercent}%)`;
+      }
+      
+      // Add note about caching process
+      if (videoPercent < 10) {
+        loadingText += '\n- Starting video cache process...';
+      } else if (videoPercent < 100) {
+        loadingText += '\n- Caching videos...';
+      } else {
+        loadingText += '\n- Videos cached successfully';
+      }
+      
+      progress = videoLoaded;
+      total = videoTotal;
     }
     
     return (
       <LoadingScreen 
-        progress={globalProgress.loaded}
-        total={globalProgress.total}
+        progress={progress}
+        total={total}
         isComplete={false}
         text={loadingText}
       />

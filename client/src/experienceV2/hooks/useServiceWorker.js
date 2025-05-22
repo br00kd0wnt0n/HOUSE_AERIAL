@@ -38,8 +38,10 @@ export const useServiceWorker = () => {
   const {
     cacheVersions,
     cachingProgress,
+    imageCachingProgress,
     checkCacheVersion,
     cacheVideos,
+    cacheImages,
     clearCaches
   } = useServiceWorkerCache({
     serviceWorkerReady,
@@ -93,8 +95,10 @@ export const useServiceWorker = () => {
     // From cache hook
     cacheVersions,
     cachingProgress,
+    imageCachingProgress,
     checkCacheVersion,
     cacheVideos,
+    cacheImages,
     clearCaches
   };
 };

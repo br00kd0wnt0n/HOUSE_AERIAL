@@ -1,6 +1,6 @@
 /**
  * Service Worker for Netflix House Aerial Experience v2
- * Handles caching of videos for offline use
+ * Handles caching of videos and images for offline use
  * 
  * Note: ESLint may warn about 'self' usage but this is standard in service workers
  * as they run in the ServiceWorkerGlobalScope where 'self' refers to the service worker instance
@@ -10,10 +10,9 @@
 /* eslint-disable no-restricted-globals */
 /* eslint-env serviceworker */
 
-// Only keep the VIDEO_CACHE - remove CORE_CACHE and API_CACHE
+// Cache constants
 const VIDEO_CACHE = 'nfh-aerial-v2-videos-v1';
-
-// No more CORE_ASSETS to cache
+const IMAGE_CACHE = 'nfh-aerial-v2-images-v1';
 
 // Install event - minimal setup, no core asset caching
 self.addEventListener('install', (event) => {
@@ -23,7 +22,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   
   // No core assets to cache
-  console.log('[Service Worker] Installed - video-only caching enabled');
+  console.log('[Service Worker] Installed - video and image caching enabled');
 });
 
 // Activate event - clean up old caches
@@ -38,8 +37,8 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          // Only keep current VIDEO_CACHE, delete everything else
-          if (cacheName !== VIDEO_CACHE) {
+          // Only keep current VIDEO_CACHE and IMAGE_CACHE, delete everything else
+          if (cacheName !== VIDEO_CACHE && cacheName !== IMAGE_CACHE) {
             console.log('[Service Worker] Deleting cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -59,6 +58,19 @@ const isVideoRequest = (url) => {
   );
 };
 
+// Helper function to determine if a request is for an image
+const isImageRequest = (url) => {
+  // Match common image file extensions
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const hasImageExtension = imageExtensions.some(ext => url.pathname.toLowerCase().endsWith(ext));
+  
+  // Match UI element asset API calls (for secondary hotspot images)
+  const isUIElementRequest = url.pathname.includes('/api/assets/file/') && 
+    (url.searchParams.get('type') === 'UIElement' || url.pathname.includes('UIElement'));
+  
+  return hasImageExtension || isUIElementRequest;
+};
+
 // Helper function to add cache headers to a response
 const addCacheHeaders = (response, cacheName) => {
   // Create a new response with custom headers
@@ -75,47 +87,52 @@ const addCacheHeaders = (response, cacheName) => {
   });
 };
 
-// Fetch event - only handle video requests, pass everything else through
+// Fetch event - handle video and image requests, pass everything else through
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
   // Handle special case for cache detection requests
   if (event.request.method === 'HEAD' && event.request.headers.get('x-cache-check') === 'true') {
     event.respondWith(
-      caches.match(new Request(event.request.url, {method: 'GET'}))
-        .then(cachedResponse => {
-          if (cachedResponse) {
-            console.log('[Service Worker] Cache check: HIT for', url.pathname);
-            return new Response(null, {
-              status: 200,
-              headers: {
-                'x-from-sw-cache': 'true',
-                'x-cache-source': 'service-worker',
-                'x-cache-name': VIDEO_CACHE
-              }
-            });
-          } else {
-            console.log('[Service Worker] Cache check: MISS for', url.pathname);
-            return new Response(null, {
-              status: 404,
-              headers: {
-                'x-from-sw-cache': 'false',
-                'x-cache-source': 'network'
-              }
-            });
-          }
-        })
-        .catch(error => {
-          console.error('[Service Worker] Cache check error:', error);
+      Promise.all([
+        caches.match(new Request(event.request.url, {method: 'GET'}), { cacheName: VIDEO_CACHE }),
+        caches.match(new Request(event.request.url, {method: 'GET'}), { cacheName: IMAGE_CACHE })
+      ]).then(([videoCachedResponse, imageCachedResponse]) => {
+        const cachedResponse = videoCachedResponse || imageCachedResponse;
+        const cacheSource = videoCachedResponse ? VIDEO_CACHE : (imageCachedResponse ? IMAGE_CACHE : null);
+        
+        if (cachedResponse) {
+          console.log('[Service Worker] Cache check: HIT for', url.pathname);
           return new Response(null, {
-            status: 500,
+            status: 200,
             headers: {
-              'x-from-sw-cache': 'false',
-              'x-cache-source': 'error',
-              'x-cache-error': error.message
+              'x-from-sw-cache': 'true',
+              'x-cache-source': 'service-worker',
+              'x-cache-name': cacheSource
             }
           });
-        })
+        } else {
+          console.log('[Service Worker] Cache check: MISS for', url.pathname);
+          return new Response(null, {
+            status: 404,
+            headers: {
+              'x-from-sw-cache': 'false',
+              'x-cache-source': 'network'
+            }
+          });
+        }
+      })
+      .catch(error => {
+        console.error('[Service Worker] Cache check error:', error);
+        return new Response(null, {
+          status: 500,
+          headers: {
+            'x-from-sw-cache': 'false',
+            'x-cache-source': 'error',
+            'x-cache-error': error.message
+          }
+        });
+      })
     );
     return;
   }
@@ -125,7 +142,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Only handle video requests, pass everything else through
+  // Handle video requests
   if (isVideoRequest(url)) {
     // Videos - Cache first, then network
     event.respondWith(
@@ -134,7 +151,6 @@ self.addEventListener('fetch', (event) => {
           // Return cached response if we have it
           if (response) {
             console.log('[Service Worker] Serving video from cache:', url.pathname);
-            // Add cache headers to the response
             return addCacheHeaders(response, VIDEO_CACHE);
           }
           
@@ -159,9 +175,39 @@ self.addEventListener('fetch', (event) => {
         return new Response('Video not available', { status: 503, statusText: 'Service Unavailable' });
       })
     );
-  } 
-  // For all non-video requests, just pass through to the network
-  // No caching for API or core assets
+  }
+  // Handle image requests
+  else if (isImageRequest(url)) {
+    // Images - Cache first, then network
+    event.respondWith(
+      caches.open(IMAGE_CACHE).then(cache => 
+        cache.match(event.request).then(response => {
+          // Return cached response if we have it
+          if (response) {
+            console.log('[Service Worker] Serving image from cache:', url.pathname);
+            return addCacheHeaders(response, IMAGE_CACHE);
+          }
+          
+          // Otherwise fetch from network and cache
+          console.log('[Service Worker] Fetching image from network:', url.pathname);
+          return fetch(event.request).then(networkResponse => {
+            // Only cache successful responses
+            if (networkResponse.status === 200) {
+              const clonedResponse = networkResponse.clone();
+              cache.put(event.request, clonedResponse);
+              console.log('[Service Worker] Cached image:', url.pathname);
+            }
+            return networkResponse;
+          });
+        })
+      ).catch(error => {
+        console.error('[Service Worker] Image fetch error:', error);
+        return new Response('Image not available', { status: 503, statusText: 'Service Unavailable' });
+      })
+    );
+  }
+  // For all other requests, just pass through to the network
+  // No caching for other API or core assets
 });
 
 // Handle messages from the app
@@ -287,10 +333,101 @@ self.addEventListener('message', (event) => {
     });
   }
   
+  // Handle cache images request
+  else if (event.data.type === 'CACHE_IMAGES' && event.data.images) {
+    const images = event.data.images;
+    const clientId = event.data.clientId;
+    
+    console.log(`[Service Worker] Caching ${images.length} images${clientId ? ' for client ' + clientId : ''}`);
+    
+    // Track progress
+    let completedImages = 0;
+    const totalImages = images.length;
+    
+    caches.open(IMAGE_CACHE).then(cache => {
+      const fetchPromises = images.map(image => {
+        // Make sure we have a valid URL
+        if (!image.url) return Promise.resolve();
+        
+        return fetch(image.url)
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Failed to fetch ${image.url}: ${response.status}`);
+            }
+            
+            return cache.put(image.url, response);
+          })
+          .then(() => {
+            completedImages++;
+            console.log(`[Service Worker] Cached image: ${image.url} (${completedImages}/${totalImages})`);
+            
+            // Send progress update to the client
+            if (clientId) {
+              self.clients.get(clientId).then(client => {
+                if (client) {
+                  client.postMessage({
+                    type: 'IMAGE_CACHE_PROGRESS',
+                    image: image.id,
+                    status: 'completed',
+                    completed: completedImages,
+                    total: totalImages
+                  });
+                }
+              }).catch(err => {
+                console.error('[Service Worker] Error sending image progress to client:', err);
+              });
+            } else if (event.source) {
+              // Fallback to event.source if clientId not provided
+              event.source.postMessage({
+                type: 'IMAGE_CACHE_PROGRESS',
+                image: image.id,
+                status: 'completed',
+                completed: completedImages,
+                total: totalImages
+              });
+            }
+          })
+          .catch(error => {
+            completedImages++;
+            console.error(`[Service Worker] Failed to cache ${image.url}:`, error);
+            
+            // Report the error back to the client
+            if (clientId) {
+              self.clients.get(clientId).then(client => {
+                if (client) {
+                  client.postMessage({
+                    type: 'IMAGE_CACHE_ERROR',
+                    image: image.id,
+                    error: error.message,
+                    completed: completedImages,
+                    total: totalImages
+                  });
+                }
+              }).catch(err => {
+                console.error('[Service Worker] Error sending image error to client:', err);
+              });
+            } else if (event.source) {
+              // Fallback to event.source if clientId not provided
+              event.source.postMessage({
+                type: 'IMAGE_CACHE_ERROR',
+                image: image.id,
+                error: error.message,
+                completed: completedImages,
+                total: totalImages
+              });
+            }
+          });
+      });
+      
+      return Promise.all(fetchPromises);
+    });
+  }
+  
   // Handle cache version check
   else if (event.data.type === 'CHECK_CACHE_VERSION') {
     const currentVersion = {
-      video: VIDEO_CACHE
+      video: VIDEO_CACHE,
+      image: IMAGE_CACHE
     };
     
     // Respond to the client

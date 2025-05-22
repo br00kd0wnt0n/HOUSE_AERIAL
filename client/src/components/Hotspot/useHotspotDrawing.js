@@ -104,7 +104,7 @@ const drawPolygon = (ctx, points, fillColor, strokeColor, shouldClosePath = true
 };
 
 // Helper function to thoroughly clear all canvas elements
-const clearCanvases = (canvasRef) => {
+const clearCanvases = (canvasRef, skipEventDispatch = false) => {
   if (!canvasRef || !canvasRef.current) return;
   
   const canvas = canvasRef.current;
@@ -139,17 +139,20 @@ const clearCanvases = (canvasRef) => {
     }
   }
   
-  // Force a dispatch of the clearOnly event to ensure map pins are cleared
-  canvas.dispatchEvent(new CustomEvent('forceMapPinDraw', {
-    detail: {
-      timestamp: Date.now(),
-      source: 'thorough-clear',
-      clearOnly: true,
-      force: true
-    }
-  }));
+  // Only dispatch the event if not skipped (to prevent overriding immediate drawing)
+  if (!skipEventDispatch) {
+    // Force a dispatch of the clearOnly event to ensure map pins are cleared
+    canvas.dispatchEvent(new CustomEvent('forceMapPinDraw', {
+      detail: {
+        timestamp: Date.now(),
+        source: 'thorough-clear',
+        clearOnly: true,
+        force: true
+      }
+    }));
+  }
   
-  console.log('All canvases thoroughly cleared');
+  console.log('All canvases thoroughly cleared', skipEventDispatch ? '(event dispatch skipped)' : '');
 };
 
 const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, selectHotspot, drawingMode, setDrawingMode, points, setPoints, showDraftPolygon = false, externalHoveredHotspot = undefined, externalSetHoveredHotspot = undefined) => {
@@ -213,7 +216,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
       const ctx = canvas.getContext('2d');
       
       // Clear canvas - always start with a fresh canvas using the thorough clearing function
-      clearCanvases(canvasRef);
+      // For hover updates, skip event dispatch to prevent interference
+      clearCanvases(canvasRef, isHoverUpdate);
       
       if (!isHoverUpdate) {
         console.log(`Drawing hotspots on canvas: ${canvas.width}x${canvas.height}, forced: ${force}`);
@@ -226,11 +230,14 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
           // Ensure draft polygon uses the correct color based on hotspotForm.type
           const fillColor = hotspotForm.type === 'PRIMARY' ? COLORS.PRIMARY : COLORS.SECONDARY;
           const strokeColor = hotspotForm.type === 'PRIMARY' ? COLORS.PRIMARY : COLORS.SECONDARY;
-          drawPolygon(ctx, points, fillColor, strokeColor);
+          
+          // When in drawing mode, only auto-close the path if we have 3+ points (consistent with existing hotspots branch)
+          const shouldClose = points.length >= 3;
+          drawPolygon(ctx, points, fillColor, strokeColor, shouldClose);
           
           // Log the type for debugging
           if (!isHoverUpdate) {
-            console.log(`Drawing draft polygon with type: ${hotspotForm.type}, color: ${fillColor}`);
+            console.log(`Drawing draft polygon with type: ${hotspotForm.type}, color: ${fillColor}, shouldClose: ${shouldClose}`);
           }
         }
         
@@ -529,15 +536,45 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
         const now = Date.now();
         const timeSinceLastHover = now - hoverThrottleRef.current.lastHover;
         
-        if (timeSinceLastHover > 500) { // 500ms is too long for a pending hover update
+        if (timeSinceLastHover > 300) { // Reduced from 500ms to be more responsive
           console.warn(`Hover pendingUpdate has been stuck for ${timeSinceLastHover}ms, resetting it`);
           hoverThrottleRef.current.pendingUpdate = false;
+          
+          // Also reset the hover state if it seems stuck
+          if (hoveredHotspot && timeSinceLastHover > 1000) {
+            console.warn('Hover state appears stuck, clearing it');
+            setHoveredHotspot(null);
+            
+            // Reset cursor style
+            if (canvasRef.current && canvasRef.current.style) {
+              canvasRef.current.style.cursor = drawingMode ? 'crosshair' : 'default';
+            }
+            
+            // Force a redraw to clear any stuck hover effects
+            drawExistingHotspots(false, true);
+          }
         }
       }
-    }, 500);
+      
+      // Additional check: if lastHotspot doesn't match hoveredHotspot, there might be a sync issue
+      if (hoverThrottleRef.current.lastHotspot !== hoveredHotspot) {
+        const lastHotspotId = hoverThrottleRef.current.lastHotspot?._id;
+        const currentHoveredId = hoveredHotspot?._id;
+        
+        if (lastHotspotId !== currentHoveredId) {
+          console.warn('Hover state mismatch detected, syncing', { lastHotspotId, currentHoveredId });
+          hoverThrottleRef.current.lastHotspot = hoveredHotspot;
+          
+          // Force a redraw to ensure visual state matches
+          if (canvasRef.current) {
+            drawExistingHotspots(false, true);
+          }
+        }
+      }
+    }, 200); // Check more frequently (every 200ms instead of 500ms)
     
     return () => clearInterval(hoverWatchdogTimer);
-  }, []);
+  }, [hoveredHotspot, setHoveredHotspot, drawingMode, canvasRef, drawExistingHotspots]);
 
   // Add handler for mouse leave events to reset hover state
   useEffect(() => {
@@ -556,21 +593,31 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
           canvas.style.cursor = drawingMode ? 'crosshair' : 'default';
         }
         
-        // Force a redraw to clear hover effects
+        // Force a redraw to clear hover effects - skip event dispatch for hover updates
         drawExistingHotspots(false, true);
       }
       
-      // Reset all hover-related flags
+      // Reset all hover-related flags and clear any pending updates
       hoverThrottleRef.current.pendingUpdate = false;
       hoverThrottleRef.current.lastHotspot = null;
+      hoverThrottleRef.current.lastHover = 0; // Reset the throttle timer
     };
     
-    // Add mouse leave event listener to the canvas
+    // Also handle mouse enter to ensure proper state
+    const handleMouseEnter = () => {
+      // Reset throttle state when entering the canvas
+      hoverThrottleRef.current.pendingUpdate = false;
+      hoverThrottleRef.current.lastHover = 0;
+    };
+    
+    // Add event listeners to the canvas
     canvas.addEventListener('mouseleave', handleMouseLeave);
+    canvas.addEventListener('mouseenter', handleMouseEnter);
     
     return () => {
       // Use captured canvas value in cleanup
       canvas.removeEventListener('mouseleave', handleMouseLeave);
+      canvas.removeEventListener('mouseenter', handleMouseEnter);
     };
   }, [canvasRef, hoveredHotspot, setHoveredHotspot, drawingMode, drawExistingHotspots]);
 
@@ -579,95 +626,111 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     // Skip hover detection in drawing mode
     if (drawingMode || !canvasRef.current) return;
     
-    // Implement throttling to avoid excessive redraws on hover
+    // Store mouse coordinates for use in delayed processing
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+    
+    // Simplified throttling - avoid recursive calls and stale event objects
     const now = Date.now();
     const throttleInterval = 25; // ms between hover updates
     
     if (now - hoverThrottleRef.current.lastHover < throttleInterval) {
-      // If we're inside the throttle interval, store the intent but don't process yet
+      // If we're inside the throttle interval, schedule a single update
       if (!hoverThrottleRef.current.pendingUpdate) {
         hoverThrottleRef.current.pendingUpdate = true;
         setTimeout(() => {
-          if (hoverThrottleRef.current.pendingUpdate) {
-            // Process the most recent hover position
+          if (hoverThrottleRef.current.pendingUpdate && canvasRef.current) {
             hoverThrottleRef.current.pendingUpdate = false;
             hoverThrottleRef.current.lastHover = Date.now();
-            // Re-trigger the hover handler with the latest event
-            handleCanvasHover(e);
+            // Process the hover detection with stored coordinates
+            processHoverDetection(mouseX, mouseY);
           }
         }, throttleInterval);
       }
       return;
     }
     
-    // Update last hover time
+    // Update last hover time and clear pending flag
     hoverThrottleRef.current.lastHover = now;
     hoverThrottleRef.current.pendingUpdate = false;
     
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
+    // Process the hover detection immediately
+    processHoverDetection(mouseX, mouseY);
     
-    // Get the video element to ensure we're always working relative to the video dimensions
-    let videoRect = rect;
-    const videoElement = canvas.parentElement.querySelector('video');
-    if (videoElement) {
-      videoRect = videoElement.getBoundingClientRect();
+    // Helper function to process hover detection with coordinates
+    function processHoverDetection(clientX, clientY) {
+      if (!canvasRef.current) return;
       
-      // If mouse is outside the video area, ignore it
-      if (
-        e.clientX < videoRect.left || 
-        e.clientX > videoRect.right || 
-        e.clientY < videoRect.top || 
-        e.clientY > videoRect.bottom
-      ) {
-        return;
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      
+      // Get the video element to ensure we're always working relative to the video dimensions
+      let videoRect = rect;
+      const videoElement = canvas.parentElement.querySelector('video');
+      if (videoElement) {
+        videoRect = videoElement.getBoundingClientRect();
+        
+        // If mouse is outside the video area, clear hover state and exit
+        if (
+          clientX < videoRect.left || 
+          clientX > videoRect.right || 
+          clientY < videoRect.top || 
+          clientY > videoRect.bottom
+        ) {
+          if (hoveredHotspot) {
+            setHoveredHotspot(null);
+            if (canvas.style) {
+              canvas.style.cursor = drawingMode ? 'crosshair' : 'default';
+            }
+            // Force redraw to clear hover effects - skip canvas clearing to prevent event loops
+            drawExistingHotspots(false, true);
+          }
+          return;
+        }
       }
-    }
-    
-    // Calculate relative position within the video (0-1)
-    const mousePoint = {
-      x: (e.clientX - videoRect.left) / videoRect.width,
-      y: (e.clientY - videoRect.top) / videoRect.height
-    };
-    
-    // Check if cursor is over any hotspot
-    let foundHotspot = null;
-    if (hotspots && Array.isArray(hotspots)) {
-      // Check in reverse order so the most recently created hotspot is checked first
-      for (let i = hotspots.length - 1; i >= 0; i--) {
-        const hotspot = hotspots[i];
-        if (hotspot.coordinates && hotspot.coordinates.length >= 3) {
-          if (isPointInPolygon(mousePoint, hotspot.coordinates)) {
-            foundHotspot = hotspot;
-            break;
+      
+      // Calculate relative position within the video (0-1)
+      const mousePoint = {
+        x: (clientX - videoRect.left) / videoRect.width,
+        y: (clientY - videoRect.top) / videoRect.height
+      };
+      
+      // Check if cursor is over any hotspot
+      let foundHotspot = null;
+      if (hotspots && Array.isArray(hotspots)) {
+        // Check in reverse order so the most recently created hotspot is checked first
+        for (let i = hotspots.length - 1; i >= 0; i--) {
+          const hotspot = hotspots[i];
+          if (hotspot.coordinates && hotspot.coordinates.length >= 3) {
+            if (isPointInPolygon(mousePoint, hotspot.coordinates)) {
+              foundHotspot = hotspot;
+              break;
+            }
           }
         }
       }
-    }
-    
-    // If hovering over the same hotspot, don't trigger redraw
-    if (foundHotspot && hoveredHotspot && foundHotspot._id === hoveredHotspot._id) {
-      return;
-    }
-    
-    // If moving from no hotspot to no hotspot, don't trigger redraw
-    if (!foundHotspot && !hoveredHotspot) {
-      return;
-    }
-    
-    // Update hovered hotspot if changed
-    if (foundHotspot !== hoveredHotspot) {
+      
+      // Check for actual change in hover state
+      const currentHoveredId = hoveredHotspot?._id;
+      const newHoveredId = foundHotspot?._id;
+      
+      if (currentHoveredId === newHoveredId) {
+        // No change in hover state, no need to redraw
+        return;
+      }
+      
+      // Update hovered hotspot state
       setHoveredHotspot(foundHotspot);
       
       // Change cursor style
       if (canvas.style) {
-        canvas.style.cursor = foundHotspot ? 'pointer' : drawingMode ? 'crosshair' : 'default';
+        canvas.style.cursor = foundHotspot ? 'pointer' : (drawingMode ? 'crosshair' : 'default');
       }
       
       // Store the current hovered hotspot for comparison
       hoverThrottleRef.current.lastHotspot = foundHotspot;
       
-      // Redraw with hover effect but don't trigger map pin redraw
+      // Redraw with hover effect - use optimized hover redraw
       drawExistingHotspots(false, true);
     }
   }, [drawingMode, canvasRef, hotspots, hoveredHotspot, isPointInPolygon, drawExistingHotspots, setHoveredHotspot]);
@@ -751,8 +814,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
       // Use a more robust approach to ensure state has updated before redrawing
       setTimeout(() => {
         if (canvasRef.current) {
-          // Thoroughly clear all canvases to prevent ghosting
-          clearCanvases(canvasRef);
+          // Thoroughly clear all canvases to prevent ghosting - skip event dispatch to prevent override
+          clearCanvases(canvasRef, true);
           
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
@@ -867,8 +930,8 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     
     // Draw the point immediately instead of waiting for state update
     if (canvasRef.current) {
-      // Thoroughly clear both canvases to prevent ghosting
-      clearCanvases(canvasRef);
+      // Thoroughly clear both canvases to prevent ghosting - skip event dispatch to prevent override
+      clearCanvases(canvasRef, true);
       
       const ctx = canvas.getContext('2d');
       
@@ -978,7 +1041,7 @@ const useHotspotDrawing = (canvasRef, hotspots, selectedHotspot, hotspotForm, se
     handleCanvasClick,
     handleCanvasHover,
     finishDrawing,
-    clearCanvases: () => clearCanvases(canvasRef) // Export the clearCanvases function
+    clearCanvases: (skipEventDispatch = false) => clearCanvases(canvasRef, skipEventDispatch) // Export the clearCanvases function
   };
 };
 

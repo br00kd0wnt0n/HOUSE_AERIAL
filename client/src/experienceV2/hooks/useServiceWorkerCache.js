@@ -4,7 +4,7 @@ import logger from '../utils/logger';
 
 /**
  * Custom hook for service worker cache management
- * Handles caching videos and checking cache versions
+ * Handles caching videos and images, checking cache versions
  * 
  * @param {Object} options - Options for the hook
  * @param {boolean} options.serviceWorkerReady - Whether the service worker is ready
@@ -23,6 +23,7 @@ export const useServiceWorkerCache = ({
   // Service worker cache state
   const [cacheVersions, setCacheVersions] = useState(null);
   const [cachingProgress, setCachingProgress] = useState(null);
+  const [imageCachingProgress, setImageCachingProgress] = useState(null);
 
   /**
    * Check the current cache version
@@ -34,7 +35,7 @@ export const useServiceWorkerCache = ({
       return false;
     }
     
-    logger.info(MODULE, 'Checking service worker cache version (videos only)');
+    logger.info(MODULE, 'Checking service worker cache version (videos and images)');
     
     return sendMessage('CHECK_CACHE_VERSION');
   }, [serviceWorkerReady, sendMessage]);
@@ -77,6 +78,43 @@ export const useServiceWorkerCache = ({
   }, [serviceWorkerReady, sendMessage]);
 
   /**
+   * Cache a list of images
+   * @param {Array} images - List of images to cache
+   * @param {Function} setLoadingProgress - Optional callback to update loading progress
+   * @returns {Promise<boolean>} Promise that resolves to true if caching was initiated
+   */
+  const cacheImages = useCallback(async (images, setLoadingProgress) => {
+    if (!serviceWorkerReady) {
+      logger.warn(MODULE, 'Service worker not ready, cannot cache images');
+      return false;
+    }
+    
+    if (!images || !images.length) {
+      logger.warn(MODULE, 'No images to cache');
+      return false;
+    }
+    
+    logger.info(MODULE, `Caching ${images.length} images (secondary hotspot UI elements)`);
+    
+    // Initialize progress state
+    const initialProgress = {
+      loaded: 0,
+      total: images.length,
+      status: 'caching'
+    };
+    
+    setImageCachingProgress(initialProgress);
+    
+    // Update external progress tracker if provided
+    if (setLoadingProgress && typeof setLoadingProgress === 'function') {
+      setLoadingProgress(initialProgress);
+    }
+    
+    // Send cache images message to service worker
+    return sendMessage('CACHE_IMAGES', { images });
+  }, [serviceWorkerReady, sendMessage]);
+
+  /**
    * Clear all service worker caches
    * @returns {Promise<boolean>} Promise that resolves to true if clearing was initiated
    */
@@ -86,7 +124,7 @@ export const useServiceWorkerCache = ({
       return false;
     }
     
-    logger.info(MODULE, 'Clearing all service worker caches');
+    logger.info(MODULE, 'Clearing all service worker caches (videos and images)');
     
     // First try the API method
     try {
@@ -116,6 +154,22 @@ export const useServiceWorkerCache = ({
   }, []);
 
   /**
+   * Update image cache progress based on message from service worker
+   * @param {Object} data - Image cache progress data
+   */
+  const handleImageCacheProgress = useCallback((data) => {
+    const { loaded, total, status } = data;
+    
+    const progress = {
+      loaded: loaded || 0,
+      total: total || 0,
+      status: status || 'caching'
+    };
+    
+    setImageCachingProgress(progress);
+  }, []);
+
+  /**
    * Handle cache version info from service worker
    * @param {Object} data - Cache version data
    */
@@ -133,6 +187,7 @@ export const useServiceWorkerCache = ({
     logger.info(MODULE, 'All caches cleared successfully');
     setCacheVersions(null);
     setCachingProgress(null);
+    setImageCachingProgress(null);
   }, []);
 
   // Register message handlers for cache-related messages
@@ -143,6 +198,7 @@ export const useServiceWorkerCache = ({
     
     // Register handlers for different message types
     const unregisterCacheProgress = registerMessageHandler('CACHE_PROGRESS', handleCacheProgress);
+    const unregisterImageCacheProgress = registerMessageHandler('IMAGE_CACHE_PROGRESS', handleImageCacheProgress);
     const unregisterCacheVersionInfo = registerMessageHandler('CACHE_VERSION_INFO', handleCacheVersionInfo);
     const unregisterCachesCleared = registerMessageHandler('CACHES_CLEARED', handleCachesCleared);
     
@@ -156,6 +212,7 @@ export const useServiceWorkerCache = ({
     // Return cleanup function
     return () => {
       unregisterCacheProgress();
+      unregisterImageCacheProgress();
       unregisterCacheVersionInfo();
       unregisterCachesCleared();
     };
@@ -163,6 +220,7 @@ export const useServiceWorkerCache = ({
     serviceWorkerReady, 
     registerMessageHandler, 
     handleCacheProgress, 
+    handleImageCacheProgress,
     handleCacheVersionInfo, 
     handleCachesCleared,
     checkCacheVersion
@@ -171,8 +229,10 @@ export const useServiceWorkerCache = ({
   return {
     cacheVersions,
     cachingProgress,
+    imageCachingProgress,
     checkCacheVersion,
     cacheVideos,
+    cacheImages,
     clearCaches
   };
 };

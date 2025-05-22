@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import useServiceWorker from '../hooks/useServiceWorker';
 import useLocationManagement from '../hooks/useLocationManagement';
 import useVideoPreloader from '../hooks/useVideoPreloader';
+import useImagePreloader from '../hooks/useImagePreloader';
 import logger from '../utils/logger';
 
 // Module name for logging
@@ -33,16 +34,55 @@ export const ExperienceProvider = ({ children }) => {
   const serviceWorker = useServiceWorker();
   const locationManager = useLocationManagement(setIsLoading);
   const videoPreloader = useVideoPreloader(setIsLoading);
+  const imagePreloader = useImagePreloader();
   
   // Store stable references to functions we need in dependency arrays
   const { serviceWorkerReady } = serviceWorker;
   const { loadLocations } = locationManager;
   const { 
-    preloadAllLocationsVideos,
-    videoPreloaderRef
+    preloadAllLocationsVideos
   } = videoPreloader;
+  const {
+    preloadHotspotImages
+  } = imagePreloader;
   
-  // Enhanced preload function combining multiple hooks
+  // Enhanced preload function combining video and image preloading
+  const preloadAllContent = useCallback(async () => {
+    logger.info(MODULE, 'Starting preload of all content (videos and images)');
+    
+    try {
+      // First load the locations data
+      const locationsData = await loadLocations();
+      
+      if (!locationsData || locationsData.length === 0) {
+        logger.warn(MODULE, 'No locations data available for preloading');
+        return { videos: { loaded: 0, total: 0 }, images: { loaded: 0, total: 0 } };
+      }
+      
+      // Start video and image preloading in parallel
+      const [videoResult, imageResult] = await Promise.all([
+        preloadAllLocationsVideos(serviceWorkerReady, locationsData),
+        preloadHotspotImages(locationsData)
+      ]);
+      
+      logger.info(MODULE, `Content preload complete:`);
+      logger.info(MODULE, `  Videos: ${videoResult.loaded}/${videoResult.total}`);
+      logger.info(MODULE, `  Images: ${imageResult.loaded}/${imageResult.total}`);
+      
+      return {
+        videos: videoResult,
+        images: imageResult
+      };
+    } catch (error) {
+      logger.error(MODULE, 'Error during content preloading:', error);
+      return { 
+        videos: { loaded: 0, total: 0, error: error.message }, 
+        images: { loaded: 0, total: 0, error: error.message } 
+      };
+    }
+  }, [loadLocations, preloadAllLocationsVideos, preloadHotspotImages, serviceWorkerReady]);
+  
+  // Enhanced preload function combining multiple hooks (backward compatibility)
   const preloadAllVideos = useCallback(async () => {
     logger.info(MODULE, 'Starting preload of all videos');
     
@@ -65,10 +105,10 @@ export const ExperienceProvider = ({ children }) => {
       return null;
     }
     
-    const videoPreloader = videoPreloaderRef.current;
+    const videoPreloaderInstance = videoPreloader.videoPreloaderRef.current;
     const result = await locationManager.loadLocation(
       locationId, 
-      videoPreloader,
+      videoPreloaderInstance,
       serviceWorkerReady
     );
     
@@ -79,7 +119,7 @@ export const ExperienceProvider = ({ children }) => {
     }
     
     return result;
-  }, [locationManager, videoPreloaderRef, serviceWorkerReady]);
+  }, [locationManager, videoPreloader.videoPreloaderRef, serviceWorkerReady]);
 
   // Log when key dependencies change
   useEffect(() => {
@@ -114,6 +154,20 @@ export const ExperienceProvider = ({ children }) => {
     getVideo: videoPreloader.getVideo,
     videoPreloaderRef: videoPreloader.videoPreloaderRef,
     preloadAllLocationsVideos: preloadAllVideos,
+    
+    // Image state and methods
+    imageLoadingProgress: imagePreloader.imageLoadingProgress,
+    isImageLoading: imagePreloader.isImageLoading,
+    preloadHotspotImages: imagePreloader.preloadHotspotImages,
+    isHotspotImageLoaded: imagePreloader.isHotspotImageLoaded,
+    getHotspotImage: imagePreloader.getHotspotImage,
+    getLocationImages: imagePreloader.getLocationImages,
+    getImageStats: imagePreloader.getImageStats,
+    resetImagePreloader: imagePreloader.resetImagePreloader,
+    imagePreloaderRef: imagePreloader.imagePreloaderRef,
+    
+    // Combined preloading
+    preloadAllContent,
     
     // Service worker state and methods
     serviceWorkerReady: serviceWorker.serviceWorkerReady,
