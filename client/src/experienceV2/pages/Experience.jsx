@@ -1,4 +1,4 @@
-import React, { useReducer, useState, useEffect } from 'react';
+import React, { useReducer, useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useExperience } from '../context/ExperienceContext';
 import VideoPlayer from '../components/VideoPlayer/VideoPlayer';
@@ -6,6 +6,7 @@ import HotspotOverlay from '../components/Hotspot/HotspotOverlay';
 import InfoPanel from '../components/Hotspot/InfoPanel';
 import LocationNavigation from '../components/Experience/LocationNavigation';
 import TransitionEffect from '../components/Experience/TransitionEffect';
+import FadeToBlackEffect from '../components/Experience/FadeToBlackEffect';
 import logger from '../utils/logger';
 import { useVideoController } from '../hooks/useVideoController';
 import { useHotspotController } from '../hooks/useHotspotController';
@@ -33,7 +34,10 @@ const initialState = {
   currentLocation: null,
   inLocationTransition: false,
   destinationLocation: null,
-  transitionComplete: false
+  transitionComplete: false,
+  
+  // Transition effects
+  fadeToBlackActive: false
 };
 
 // Reducer function
@@ -92,6 +96,10 @@ function experienceReducer(state, action) {
         transitionComplete: true
       };
       
+    // Transition effect actions
+    case 'SET_FADE_TO_BLACK_ACTIVE':
+      return { ...state, fadeToBlackActive: action.payload };
+      
     default:
       return state;
   }
@@ -124,6 +132,25 @@ const Experience = () => {
   // Debug mode state (kept separate from reducer since it's UI-specific)
   const [debugMode, setDebugMode] = useState(false);
   
+  // Fade to black effect callback
+  const [fadeToBlackCallback, setFadeToBlackCallback] = useState(null);
+  
+  // Handle fade to black completion
+  const handleFadeToBlackComplete = useCallback(() => {
+    logger.info(MODULE, 'Fade to black effect completed');
+    
+    // Execute the stored callback if available
+    if (fadeToBlackCallback && typeof fadeToBlackCallback === 'function') {
+      logger.info(MODULE, 'Executing fade to black callback');
+      fadeToBlackCallback();
+      
+      // Clear the callback after execution
+      setFadeToBlackCallback(null);
+    }
+    
+    // Keep fade effect active until explicitly turned off by the callback
+  }, [fadeToBlackCallback]);
+  
   // Use controller hooks for specific functionality
   const videoController = useVideoController({
     locationId,
@@ -135,11 +162,24 @@ const Experience = () => {
     locations
   });
   
+  // Function to start fade to black effect
+  const startFadeToBlack = useCallback((callback) => {
+    logger.info(MODULE, 'Starting fade to black effect');
+    
+    // Store the callback to be executed after fade completes
+    setFadeToBlackCallback(() => callback);
+    
+    // Activate the fade effect
+    dispatch({ type: 'SET_FADE_TO_BLACK_ACTIVE', payload: true });
+  }, []);
+  
+  // Create enhanced versions of the controllers with fade-to-black support
   const hotspotController = useHotspotController({
     locationId,
     videoStateManagerRef: videoController.videoStateManagerRef,
     state: { ...state, videoRef: videoController.videoRef }, // Pass videoRef to hotspot controller
-    dispatch
+    dispatch,
+    startFadeToBlack
   });
   
   const locationController = useLocationController({
@@ -148,7 +188,8 @@ const Experience = () => {
     videoStateManagerRef: videoController.videoStateManagerRef,
     state,
     dispatch,
-    navigate
+    navigate,
+    startFadeToBlack
   });
   
   // Set up debug mode keyboard shortcut
@@ -207,6 +248,13 @@ const Experience = () => {
         destinationLocationName={state.destinationLocation?.name}
       />
       
+      {/* Fade to Black Effect - shown before hotspot or location transitions */}
+      <FadeToBlackEffect
+        isActive={state.fadeToBlackActive}
+        onComplete={handleFadeToBlackComplete}
+        duration={1000} // 1 second fade as requested
+      />
+      
       {/* Hotspot overlay - only shown for aerial video when playing */}
       {state.currentVideo === 'aerial' && state.isVideoPlaying && videoController.videoRef.current && (
         <HotspotOverlay 
@@ -249,15 +297,20 @@ const Experience = () => {
         </div>
       )}
       
-      {/* UI Controls - Back to Home button with fixed positioning */}
-      <div className="fixed top-4 right-4 z-30">
-        <button 
-          className="px-6 py-3 bg-netflix-red text-white rounded-lg hover:bg-netflix-red/80 transition-colors text-lg font-medium"
-          onClick={locationController.handleBackToHome}
-        >
-          Back to Home
-        </button>
-      </div>
+      {/* UI Controls - Back to Map button with fixed positioning */}
+      {/* Only show when in playlist mode or not in aerial view */}
+      {(state.inPlaylistMode || state.currentVideo !== 'aerial') && (
+        <div className="fixed top-4 right-4 z-30">
+          <button 
+            className="w-12 h-12 bg-netflix-red text-white rounded-full flex items-center justify-center hover:bg-netflix-red/80 transition-colors text-3xl font-bold"
+            onClick={locationController.handleBackToMap}
+            aria-label="Back to Map"
+            title="Back to Map"
+          >
+            ×
+          </button>
+        </div>
+      )}
       
       {/* Debug info - only shown in debug mode */}
       {debugMode && state.currentLocation && !state.inPlaylistMode && (
