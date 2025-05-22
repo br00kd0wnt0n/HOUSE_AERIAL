@@ -5,10 +5,14 @@ import VideoPlayer from '../components/VideoPlayer/VideoPlayer';
 import HotspotOverlay from '../components/Hotspot/HotspotOverlay';
 import InfoPanel from '../components/Hotspot/InfoPanel';
 import LocationNavigation from '../components/Experience/LocationNavigation';
+import TransitionEffect from '../components/Experience/TransitionEffect';
 import logger from '../utils/logger';
 import { useVideoController } from '../hooks/useVideoController';
 import { useHotspotController } from '../hooks/useHotspotController';
 import { useLocationController } from '../hooks/useLocationController';
+
+// Import animations
+import '../styles/animations.css';
 
 // Initial state for the reducer
 const initialState = {
@@ -194,6 +198,15 @@ const Experience = () => {
         key={`video-player-${state.videoUrl}`}
       />
       
+      {/* CSS Transition Effect - shown when in location transition but no video */}
+      <TransitionEffect 
+        isActive={state.inLocationTransition && state.currentVideo !== 'locationTransition'}
+        onTransitionComplete={locationController.handleCssTransitionComplete}
+        duration={2000}
+        sourceLocationName={state.currentLocation?.name}
+        destinationLocationName={state.destinationLocation?.name}
+      />
+      
       {/* Hotspot overlay - only shown for aerial video when playing */}
       {state.currentVideo === 'aerial' && state.isVideoPlaying && videoController.videoRef.current && (
         <HotspotOverlay 
@@ -217,10 +230,10 @@ const Experience = () => {
       {state.currentVideo === 'aerial' && !state.inPlaylistMode && (
         <LocationNavigation 
           locations={locations}
-          currentLocationId={locationId}
+          currentLocationId={state.currentLocation?._id || locationId}
           onClick={locationController.handleLocationButtonClick}
           debugMode={debugMode}
-          key={`location-nav-${locationId}`}
+          key={`location-nav-${state.currentLocation?._id || locationId}`}
         />
       )}
       

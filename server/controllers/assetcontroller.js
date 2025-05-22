@@ -34,7 +34,7 @@ exports.getAssets = async (req, res) => {
 // Create a new asset
 exports.createAsset = async (req, res) => {
   try {
-    const { name, type, location } = req.body;
+    const { name, type, location, metadata } = req.body;
     const file = req.file;
     
     // Log raw request body and form data for debugging
@@ -85,6 +85,22 @@ exports.createAsset = async (req, res) => {
       console.log(`[AssetController] No location provided or invalid value:`, location);
     }
     
+    // Process metadata field
+    let metadataObj = {};
+    if (metadata) {
+      try {
+        // If metadata is a string, try to parse it as JSON
+        if (typeof metadata === 'string') {
+          metadataObj = JSON.parse(metadata);
+        } else if (typeof metadata === 'object') {
+          metadataObj = metadata;
+        }
+        console.log(`[AssetController] Metadata provided:`, metadataObj);
+      } catch (error) {
+        console.error('[AssetController] Error parsing metadata:', error);
+      }
+    }
+    
     // Create new asset in database
     const asset = new Asset({
       name,
@@ -93,7 +109,8 @@ exports.createAsset = async (req, res) => {
       accessUrl,
       fileType,
       size: file.size,
-      location: locationId
+      location: locationId,
+      metadata: metadataObj
     });
     
     await asset.save();
@@ -125,7 +142,7 @@ exports.getAsset = async (req, res) => {
 // Update an asset
 exports.updateAsset = async (req, res) => {
   try {
-    const { name, type, location } = req.body;
+    const { name, type, location, metadata } = req.body;
     const file = req.file;
     
     console.log(`Updating asset ${req.params.id}: name=${name}, type=${type}, location=${location || 'none'}`);
@@ -146,6 +163,21 @@ exports.updateAsset = async (req, res) => {
     } else if (location !== undefined) {
       console.log(`Setting location ID: ${location} for asset: ${asset.name}`);
       asset.location = location;
+    }
+    
+    // Process metadata field
+    if (metadata !== undefined) {
+      try {
+        // If metadata is a string, try to parse it as JSON
+        if (typeof metadata === 'string') {
+          asset.metadata = JSON.parse(metadata);
+        } else if (typeof metadata === 'object') {
+          asset.metadata = metadata;
+        }
+        console.log(`[AssetController] Updated metadata:`, asset.metadata);
+      } catch (error) {
+        console.error('[AssetController] Error parsing metadata:', error);
+      }
     }
     
     // If new file is provided, update the file
@@ -185,6 +217,45 @@ exports.updateAsset = async (req, res) => {
   } catch (error) {
     console.error('Error updating asset:', error);
     res.status(500).json({ error: 'Failed to update asset' });
+  }
+};
+
+// Update only the metadata of an asset
+exports.updateAssetMetadata = async (req, res) => {
+  try {
+    const { metadata } = req.body;
+    
+    if (metadata === undefined) {
+      return res.status(400).json({ error: 'Metadata is required' });
+    }
+    
+    console.log(`Updating metadata for asset ${req.params.id}`);
+    
+    const asset = await Asset.findById(req.params.id);
+    if (!asset) {
+      return res.status(404).json({ error: 'Asset not found' });
+    }
+    
+    // Process metadata field
+    try {
+      // If metadata is a string, try to parse it as JSON
+      if (typeof metadata === 'string') {
+        asset.metadata = JSON.parse(metadata);
+      } else if (typeof metadata === 'object') {
+        asset.metadata = metadata;
+      }
+      console.log(`[AssetController] Updated metadata:`, asset.metadata);
+    } catch (error) {
+      console.error('[AssetController] Error parsing metadata:', error);
+      return res.status(400).json({ error: 'Invalid metadata format' });
+    }
+    
+    await asset.save();
+    console.log(`Asset metadata updated successfully: ${asset._id}, name: ${asset.name}`);
+    res.json(asset);
+  } catch (error) {
+    console.error('Error updating asset metadata:', error);
+    res.status(500).json({ error: 'Failed to update asset metadata' });
   }
 };
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAdmin } from '../../context/AdminContext';
-import { baseBackendUrl } from '../../utils/api';
+import { useToast } from '../../components/ui/use-toast';
 
 // Import shadcn/ui components
 import { 
@@ -18,7 +18,6 @@ import {
   AlertTitle, 
   AlertDescription 
 } from '../../components/ui/alert';
-import { useToast } from '../../components/ui/use-toast';
 import { DeleteConfirmation } from '../../components/ui/DeleteConfirmation';
 
 // Import our new component files
@@ -75,7 +74,8 @@ const Assets = () => {
     type: 'AERIAL',
     file: null,
     fileName: '',
-    buttonState: 'OFF' // Default button state
+    buttonState: 'OFF', // Default button state
+    metadata: {} // Added metadata field
   });
   
   // Add error state
@@ -98,7 +98,7 @@ const Assets = () => {
     console.log(`Filtering assets for type ${activeTab}:`, assetsForType);
     
     // For location-specific assets, filter by selected location
-    if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin'].includes(activeTab)) {
+    if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(activeTab)) {
       if (!selectedLocation) {
         console.log('No location selected for location-specific assets');
         return []; // Return empty array if no location selected for location-specific assets
@@ -188,148 +188,28 @@ const Assets = () => {
       };
     });
   }, [activeTab, selectedLocation]);
-
-  // File type validation
-  const isValidFileType = useCallback((file, isVideoType) => {
-    const validVideoTypes = ['video/mp4', 'video/quicktime'];
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
-    
-    if (isVideoType) {
-      return validVideoTypes.includes(file.type);
-    } else {
-      // For Button assets, only allow PNG and JPG
-      if (activeTab === 'Button') {
-        return ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
-      }
-      return validImageTypes.includes(file.type);
-    }
-  }, [activeTab]);
   
-  // Get image dimensions
-  const getImageDimensions = (file) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ width: img.width, height: img.height });
-      };
-      img.onerror = () => {
-        reject(new Error('Failed to load image for dimension check'));
-      };
-      img.src = URL.createObjectURL(file);
-    });
-  };
-  
-  // Check if dimensions match existing button for the same location
-  const checkButtonDimensions = useCallback(async (file, locationId, buttonState) => {
-    if (!locationId || activeTab !== 'Button') return true;
-    
-    try {
-      // Get dimensions of the current file
-      const dimensions = await getImageDimensions(file);
+  const handleFileChange = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Use the filename as the asset name
+      const fileName = file.name;
+      let assetName = fileName;
       
-      // Find opposite button state for this location
-      const oppositeState = buttonState === 'ON' ? 'OFF' : 'ON';
-      const oppositeButtonSuffix = `_Button_${oppositeState}`;
-      
-      const existingButtons = assetsByType.Button.filter(asset => 
-        asset.location && asset.location._id === locationId && 
-        asset.name.endsWith(oppositeButtonSuffix)
-      );
-      
-      if (existingButtons.length === 0) {
-        // No opposite button exists yet, so dimensions are valid
-        return true;
+      // For button assets, use the location name and append button state
+      if (activeTab === 'Button' && selectedLocation) {
+        const buttonSuffix = `_Button_${uploadForm.buttonState}`;
+        assetName = `${selectedLocation.name}${buttonSuffix}`;
       }
       
-      // Load the existing button image to check dimensions
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const existingDimensions = { width: img.width, height: img.height };
-          const dimensionsMatch = dimensions.width === existingDimensions.width && 
-                                  dimensions.height === existingDimensions.height;
-          
-          if (!dimensionsMatch) {
-            toast({
-              title: "Dimension Mismatch",
-              description: `This button's dimensions (${dimensions.width}x${dimensions.height}) don't match the existing ${oppositeState} button (${existingDimensions.width}x${existingDimensions.height}). Both ON and OFF buttons must have the same dimensions.`,
-              variant: "destructive",
-            });
-          }
-          
-          resolve(dimensionsMatch);
-        };
-        img.onerror = () => {
-          // If we can't load the image, assume dimensions are valid
-          resolve(true);
-        };
-        img.src = existingButtons[0].accessUrl ? `${baseBackendUrl}${existingButtons[0].accessUrl}` : '';
-      });
-    } catch (error) {
-      console.error('Error checking button dimensions:', error);
-      return false;
+      setUploadForm(prev => ({
+        ...prev,
+        file,
+        fileName,
+        name: assetName
+      }));
     }
-  }, [activeTab, assetsByType.Button, toast]);
-  
-  const handleFileChange = useCallback(async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Check if current asset type requires a video or image
-    const requiresVideo = ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition'].includes(activeTab);
-    
-    // Validate file type
-    if (!isValidFileType(file, requiresVideo)) {
-      const allowedTypes = requiresVideo 
-        ? 'MP4 or QuickTime video' 
-        : activeTab === 'Button' 
-          ? 'PNG or JPEG image'
-          : 'PNG, JPEG, or GIF image';
-      
-      setError(null); // Clear any existing error first
-      toast({
-        title: "Invalid File Type",
-        description: `This asset type only accepts ${allowedTypes} files.`,
-        variant: "destructive",
-      });
-      
-      // Reset file input
-      if (e.target) {
-        e.target.value = '';
-      }
-      return;
-    }
-    
-    // For Button assets, check dimensions if we have a location selected
-    if (activeTab === 'Button' && selectedLocation) {
-      const dimensionsValid = await checkButtonDimensions(
-        file, 
-        selectedLocation._id, 
-        uploadForm.buttonState
-      );
-      
-      if (!dimensionsValid) {
-        // Reset file input
-        if (e.target) {
-          e.target.value = '';
-        }
-        return;
-      }
-    }
-    
-    // Auto-generate name for Button assets
-    let fileName = file.name.split('.')[0]; // Default name from filename
-    if (activeTab === 'Button' && selectedLocation) {
-      fileName = `${selectedLocation.name}_Button_${uploadForm.buttonState}`;
-    }
-    
-    setUploadForm(prev => ({
-      ...prev,
-      file,
-      fileName: file.name,
-      name: fileName
-    }));
-  }, [activeTab, isValidFileType, toast, selectedLocation, uploadForm.buttonState, checkButtonDimensions]);
+  }, [activeTab, selectedLocation, uploadForm.buttonState]);
   
   const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
@@ -347,7 +227,28 @@ const Assets = () => {
     
     // Determine if we need to associate with a location
     let locationId = null;
-    if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin'].includes(uploadForm.type)) {
+    let metadata = null;
+    
+    // For transition videos, we need both source and destination locations in metadata
+    if (uploadForm.type === 'Transition') {
+      if (!selectedLocation || !uploadForm.metadata?.destinationLocation) {
+        setError(new Error('Please select a destination location for the transition video'));
+        return;
+      }
+      
+      // Create metadata object with source (current location) and destination location IDs
+      metadata = {
+        sourceLocation: selectedLocation._id, // Source is always the current selected location
+        destinationLocation: uploadForm.metadata.destinationLocation
+      };
+      
+      // Also set the locationId for the asset record
+      locationId = selectedLocation._id;
+      
+      console.log(`[Assets] Using metadata for transition:`, metadata);
+    }
+    // For other location-specific assets, we need a selected location
+    else if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(uploadForm.type)) {
       if (!selectedLocation) {
         setError(new Error('Please select a location for this asset type'));
         return;
@@ -358,32 +259,12 @@ const Assets = () => {
       console.log(`[Assets] No location required for asset type: ${uploadForm.type}`);
     }
     
-    // For Button assets, enforce naming convention and validate
+    // Special handling for Button assets
+    let finalName = uploadForm.name;
     if (uploadForm.type === 'Button') {
-      // Ensure name follows the convention
       if (!uploadForm.name.endsWith(`_Button_${uploadForm.buttonState}`)) {
-        // Auto-correct the name
-        setUploadForm(prev => ({
-          ...prev,
-          name: `${selectedLocation.name}_Button_${uploadForm.buttonState}`
-        }));
-      }
-      
-      // Check for duplicate button with same location and state
-      const duplicateButton = assetsByType.Button.find(
-        asset => asset.location && 
-                asset.location._id === locationId && 
-                asset.name.endsWith(`_Button_${uploadForm.buttonState}`)
-      );
-      
-      if (duplicateButton) {
-        setError(new Error(`A ${uploadForm.buttonState} button already exists for this location. Delete the existing button first.`));
-        toast({
-          title: "Duplicate Button",
-          description: `A ${uploadForm.buttonState} button already exists for ${selectedLocation.name}. Please delete the existing button first if you want to replace it.`,
-          variant: "destructive"
-        });
-        return;
+        finalName = `${selectedLocation.name}_Button_${uploadForm.buttonState}`;
+        console.log(`[Assets] Appending button state to name: ${finalName}`);
       }
     }
     
@@ -391,14 +272,15 @@ const Assets = () => {
       // Set loading state
       setSaveStatus({ success: false, message: '' });
       
-      console.log(`[Assets] Preparing to upload: "${uploadForm.name}" (${uploadForm.type}) to location: ${locationId ? selectedLocation.name : 'none'}`);
+      console.log(`[Assets] Preparing to upload: "${finalName}" (${uploadForm.type}) to location: ${locationId ? selectedLocation.name : 'none'}`);
       
       // Upload the asset - only one upload at a time
       const result = await uploadAsset(
         uploadForm.file,
-        uploadForm.name,
+        finalName,
         uploadForm.type,
-        locationId
+        locationId,
+        metadata
       );
       
       if (result) {
@@ -406,7 +288,8 @@ const Assets = () => {
           id: result._id,
           name: result.name,
           hasLocation: !!result.location,
-          locationId: result.location?._id || result.location || 'none'
+          locationId: result.location?._id || result.location || 'none',
+          metadata: result.metadata || 'none'
         });
         
         // Reset form
@@ -415,7 +298,8 @@ const Assets = () => {
           type: activeTab,
           file: null,
           fileName: '',
-          buttonState: 'OFF' // Reset button state
+          buttonState: 'OFF', // Reset button state
+          metadata: {} // Reset metadata
         });
         
         // Only fetch if we have a selected location
@@ -426,7 +310,7 @@ const Assets = () => {
         // Show success toast - use a single toast
         toast({
           title: "Upload Successful",
-          description: `"${uploadForm.name}" has been uploaded successfully.`,
+          description: `"${finalName}" has been uploaded successfully.`,
           variant: "success"
         });
       }
@@ -441,7 +325,7 @@ const Assets = () => {
         variant: "destructive"
       });
     }
-  }, [uploadForm, selectedLocation, activeTab, uploadAsset, fetchAssets, setSaveStatus, toast, assetsByType.Button]);
+  }, [uploadForm, selectedLocation, activeTab, uploadAsset, fetchAssets, setSaveStatus, toast]);
   
   // Modify handleDeleteAsset to show confirmation dialog
   const handleDeleteAsset = useCallback((assetId, assetName) => {
@@ -700,7 +584,7 @@ const Assets = () => {
               {(!filteredAssets || filteredAssets.length === 0) ? (
                 <div className="text-center p-4">
                   <p className="text-netflix-lightgray mb-2">No {currentAssetType?.label?.toLowerCase()} found</p>
-                  {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut'].includes(activeTab) && !selectedLocation && (
+                  {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition'].includes(activeTab) && !selectedLocation && (
                     <p className="text-netflix-red text-sm">Please select a location to view assets</p>
                   )}
                 </div>

@@ -3,6 +3,7 @@ import { Button } from '../../../components/ui/button';
 import { Card, CardContent } from '../../../components/ui/card';
 import AssetPreview from './AssetPreview';
 import ButtonAssetGroup from './ButtonAssetGroup';
+import { useAdmin } from '../../../context/AdminContext';
 
 // Format file size for display
 const formatFileSize = (bytes) => {
@@ -22,6 +23,15 @@ const AssetList = ({
   onBulkDelete,
   currentAssetType
 }) => {
+  // Get locations from AdminContext for resolving location names
+  const { locations } = useAdmin();
+  
+  // Helper function to get location name by ID
+  const getLocationName = (locationId) => {
+    if (!locationId || !locations) return 'Unknown';
+    const location = locations.find(loc => loc._id === locationId);
+    return location ? location.name : 'Unknown';
+  };
   
   // Special case for Button assets
   if (activeTab === 'Button') {
@@ -69,6 +79,9 @@ const AssetList = ({
               <th className="py-3 px-4 text-left text-netflix-red">Name</th>
               <th className="py-3 px-4 text-left text-netflix-red">Size</th>
               <th className="py-3 px-4 text-left text-netflix-red">Location</th>
+              {activeTab === 'Transition' && (
+                <th className="py-3 px-4 text-left text-netflix-red">Transition Details</th>
+              )}
               <th className="py-3 px-4 text-left text-netflix-red">Actions</th>
             </tr>
           </thead>
@@ -83,6 +96,22 @@ const AssetList = ({
                 <td className="py-3 px-4">
                   {asset.location ? asset.location.name : 'N/A'}
                 </td>
+                {activeTab === 'Transition' && (
+                  <td className="py-3 px-4">
+                    {asset.metadata && (asset.metadata.sourceLocation || asset.metadata.destinationLocation) ? (
+                      <div className="text-xs">
+                        <div className="mb-1">
+                          <span className="text-netflix-red">From:</span> {getLocationName(asset.metadata.sourceLocation)}
+                        </div>
+                        <div>
+                          <span className="text-netflix-red">To:</span> {getLocationName(asset.metadata.destinationLocation)}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-netflix-lightgray text-xs">No transition details</span>
+                    )}
+                  </td>
+                )}
                 <td className="py-3 px-4">
                   <Button
                     variant="destructive"
@@ -123,6 +152,25 @@ const AssetList = ({
                       {asset.location ? asset.location.name : 'N/A'}
                     </span>
                   </div>
+                  {activeTab === 'Transition' && asset.metadata && (
+                    <div className="grid grid-cols-3 gap-1">
+                      <span className="text-netflix-red font-medium">Transition:</span>
+                      <span className="text-white col-span-2">
+                        {asset.metadata.sourceLocation && asset.metadata.destinationLocation ? (
+                          <div className="text-xs">
+                            <div className="mb-1">
+                              <span className="text-netflix-lightgray">From:</span> {getLocationName(asset.metadata.sourceLocation)}
+                            </div>
+                            <div>
+                              <span className="text-netflix-lightgray">To:</span> {getLocationName(asset.metadata.destinationLocation)}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-netflix-lightgray text-xs">No transition details</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="pt-2">
                   <Button

@@ -66,25 +66,37 @@ const VideoPlayer = ({
     }
   }, [onVideoRef, videoRef]);
   
+  // Determine if this is a transition video to apply higher z-index
+  const isTransition = type === 'transition' || type === 'locationTransition' || type.includes('transition');
+  
+  // Get container styles based on video type
+  const containerStyles = {
+    background: type === 'aerial' 
+      ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))' 
+      : 'black',
+    zIndex: isTransition ? 50 : 'auto', // Add high z-index for transition videos
+    // Use fixed positioning for transition videos to ensure they appear on top
+    position: isTransition ? 'fixed' : 'relative',
+    inset: isTransition ? '0' : 'auto',
+    width: isTransition ? '100%' : '100%',
+    height: isTransition ? '100%' : '100%'
+  };
+  
   return (
     <div 
       ref={containerRef}
-      className={cn("w-full h-full relative overflow-hidden", className)}
-      style={{ 
-        background: type === 'aerial' 
-          ? 'linear-gradient(to bottom, rgb(207 234 235), rgb(239 249 251))' 
-          : 'black' 
-      }}
+      className={cn("overflow-hidden", isTransition ? "fixed inset-0" : "w-full h-full relative", className)}
+      style={containerStyles}
     >
       {src ? (
         <>
           <video
             ref={videoRef}
             src={src}
-            className="video-element"
+            className={cn("video-element", isTransition ? "w-full h-full object-cover" : "")}
             style={videoStyles}
             playsInline
-            muted={type === 'aerial' || type === 'transition'}
+            muted={type === 'aerial' || type === 'transition' || type.includes('transition')}
             loop={type === 'aerial'}
             autoPlay={isPlaying}
             onEnded={() => handleVideoEnded()}

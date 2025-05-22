@@ -291,50 +291,6 @@ export const clearCache = (endpoint = null, id = null) => {
 };
 
 /**
- * Look for transition video using ID pattern matching
- * @param {Array} transitionAssets - Available transition assets
- * @param {string} sourceLocationId - Source location ID
- * @param {string} destinationLocationId - Destination location ID
- * @returns {Object|null} Matching transition video or null
- */
-const findTransitionByIdPattern = (transitionAssets, sourceLocationId, destinationLocationId) => {
-  const idPattern = `transition_${sourceLocationId}_to_${destinationLocationId}`;
-  
-  const match = transitionAssets.find(asset => 
-    asset.name && asset.name.toLowerCase().includes(idPattern)
-  );
-  
-  if (match) {
-    logger.debug(MODULE, `Found transition video by ID pattern: ${match.name}`);
-  }
-  
-  return match;
-};
-
-/**
- * Look for transition video using location name pattern matching
- * @param {Array} transitionAssets - Available transition assets
- * @param {string} sourceLocationName - Source location name
- * @param {string} destLocationName - Destination location name
- * @returns {Object|null} Matching transition video or null
- */
-const findTransitionByNamePattern = (transitionAssets, sourceLocationName, destLocationName) => {
-  if (!sourceLocationName || !destLocationName) return null;
-  
-  const namePattern = `${sourceLocationName}_to_${destLocationName}`;
-  
-  const match = transitionAssets.find(asset => 
-    asset.name && asset.name.toLowerCase().includes(namePattern)
-  );
-  
-  if (match) {
-    logger.debug(MODULE, `Found transition video by name pattern: ${match.name}`);
-  }
-  
-  return match;
-};
-
-/**
  * Look for transition video using metadata
  * @param {Array} transitionAssets - Available transition assets
  * @param {string} sourceLocationId - Source location ID
@@ -342,37 +298,29 @@ const findTransitionByNamePattern = (transitionAssets, sourceLocationName, destL
  * @returns {Object|null} Matching transition video or null
  */
 const findTransitionByMetadata = (transitionAssets, sourceLocationId, destinationLocationId) => {
-  const match = transitionAssets.find(asset => 
-    asset.metadata && 
-    ((asset.metadata.sourceLocation === sourceLocationId && 
-      asset.metadata.destinationLocation === destinationLocationId) ||
-     (asset.metadata.from === sourceLocationId && 
-      asset.metadata.to === destinationLocationId))
-  );
-  
-  if (match) {
-    logger.debug(MODULE, `Found transition video by metadata: ${match.name}`);
+  if (!Array.isArray(transitionAssets) || !sourceLocationId || !destinationLocationId) {
+    logger.debug(MODULE, 'Invalid parameters for findTransitionByMetadata');
+    return null;
   }
-  
-  return match;
-};
 
-/**
- * Find generic transition video as fallback
- * @param {Array} transitionAssets - Available transition assets
- * @returns {Object|null} Generic transition video or null
- */
-const findGenericTransition = (transitionAssets) => {
-  const match = transitionAssets.find(asset => 
-    asset.name && asset.name.toLowerCase().includes('transition') &&
-    asset.accessUrl
-  );
-  
-  if (match) {
-    logger.debug(MODULE, `Using generic transition: ${match.name}`);
+  try {
+    const match = transitionAssets.find(asset => 
+      asset.metadata && 
+      ((asset.metadata.sourceLocation === sourceLocationId && 
+        asset.metadata.destinationLocation === destinationLocationId) ||
+       (asset.metadata.from === sourceLocationId && 
+        asset.metadata.to === destinationLocationId))
+    );
+    
+    if (match) {
+      logger.info(MODULE, `Found transition video by metadata: ${match.name}`);
+    }
+    
+    return match;
+  } catch (error) {
+    logger.error(MODULE, `Error in findTransitionByMetadata: ${error.message}`);
+    return null;
   }
-  
-  return match;
 };
 
 // API methods with deduplication and caching
@@ -398,96 +346,43 @@ const dataLayer = {
   // Get transition videos between locations
   getTransitionVideo: async (sourceLocationId, destinationLocationId, forceRefresh = false) => {
     if (!sourceLocationId || !destinationLocationId) {
-      logger.error(MODULE, 'Cannot get transition video - missing location IDs');
+      logger.error(MODULE, 'Cannot get transition video - missing location IDs', {
+        sourceLocationId,
+        destinationLocationId
+      });
       return null;
     }
     
     try {
-      // Try to find transition videos with specific naming pattern
+      // Get all transition assets
+      logger.debug(MODULE, `Fetching transition videos for transition from ${sourceLocationId} to ${destinationLocationId}`);
       const transitionAssets = await dataLayer.getAssetsByType('Transition', null, forceRefresh);
       
       if (!Array.isArray(transitionAssets) || transitionAssets.length === 0) {
-        logger.warn(MODULE, 'No transition assets found');
+        logger.info(MODULE, 'No transition assets found in the system');
         return null;
       }
       
-      // Only log at debug level in production to reduce verbosity
-      logger.debug(MODULE, `Looking for transition from ${sourceLocationId} to ${destinationLocationId}`);
-      
-      // First, get location names for pattern matching
-      let sourceLocationName, destLocationName;
-      
-      try {
-        const locations = await dataLayer.getLocations();
-        
-        if (Array.isArray(locations)) {
-          const sourceLocation = locations.find(loc => loc._id === sourceLocationId);
-          const destinationLocation = locations.find(loc => loc._id === destinationLocationId);
-          
-          sourceLocationName = sourceLocation?.name?.toLowerCase().replace(/\s+/g, '_');
-          destLocationName = destinationLocation?.name?.toLowerCase().replace(/\s+/g, '_');
-        }
-      } catch (error) {
-        logger.debug(MODULE, 'Could not fetch location names for transition lookup');
-        // Continue with other lookup methods
-      }
-      
-      // Try multiple strategies to find a transition video
-      let transitionVideo = null;
-      
-      // Strategy 1: Try exact ID pattern match
-      transitionVideo = findTransitionByIdPattern(
-        transitionAssets, 
-        sourceLocationId, 
+      // Primary strategy: Find by metadata (the new proper way)
+      const transitionVideo = findTransitionByMetadata(
+        transitionAssets,
+        sourceLocationId,
         destinationLocationId
       );
       
-      // Strategy 2: Try name pattern match
-      if (!transitionVideo && sourceLocationName && destLocationName) {
-        transitionVideo = findTransitionByNamePattern(
-          transitionAssets,
-          sourceLocationName,
-          destLocationName
-        );
-      }
-      
-      // Strategy 3: Try checking metadata
-      if (!transitionVideo) {
-        transitionVideo = findTransitionByMetadata(
-          transitionAssets,
-          sourceLocationId,
-          destinationLocationId
-        );
-      }
-      
-      // Strategy 4: If still not found, try generic transition
-      if (!transitionVideo) {
-        transitionVideo = findGenericTransition(transitionAssets);
-        
-        if (transitionVideo) {
-          // Only log at info level in development
-          if (process.env.NODE_ENV === 'development') {
-            logger.info(MODULE, `No specific transition found, using generic transition: ${transitionVideo.name}`);
-          } else {
-            logger.debug(MODULE, `Using generic transition: ${transitionVideo.name}`);
-          }
-        }
-      }
-      
+      // If found, return the transition video
       if (transitionVideo) {
-        // Only log at info level in development
-        if (process.env.NODE_ENV === 'development') {
-          logger.info(MODULE, `Found transition video: ${transitionVideo.name}`);
-        } else {
-          logger.debug(MODULE, `Found transition video: ${transitionVideo.name}`);
-        }
-      } else {
-        logger.warn(MODULE, `No suitable transition video found between locations`);
+        return transitionVideo;
       }
       
-      return transitionVideo;
+      // If no specific transition found, log this clearly
+      logger.info(MODULE, `No transition video found for route: ${sourceLocationId} to ${destinationLocationId}`);
+      
+      // We no longer use the legacy pattern matching strategies or generic fallback
+      // This enables a clean CSS transition fallback instead
+      return null;
     } catch (error) {
-      logger.error(MODULE, `Error fetching transition video:`, error);
+      logger.error(MODULE, `Error fetching transition video: ${error.message}`, error);
       return null;
     }
   },

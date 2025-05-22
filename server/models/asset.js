@@ -30,6 +30,10 @@ const AssetSchema = new mongoose.Schema({
     type: Number, // Size in bytes
     required: true
   },
+  metadata: {
+    type: Object, // Flexible object to store additional data
+    default: {}
+  },
   location: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Location',
