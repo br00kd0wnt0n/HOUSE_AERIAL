@@ -28,9 +28,10 @@ const assetTypeNames = {
   'FloorLevel': 'Floor Level Videos',
   'ZoomOut': 'Zoom-Out Videos',
   'Transition': 'Transition Videos',
-  'Button': 'Buttons',
+  'Button': 'Location Buttons',
   'MapPin': 'Map Pins',
-  'UIElement': 'UI Elements'
+  'UIElement': 'UI Elements',
+  'LocationBanner': 'Location Banner'
 };
 
 /**
@@ -172,7 +173,7 @@ const AssetUploadForm = ({
           </div>
         </div>
         
-        {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(activeTab) && (
+        {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition', 'LocationBanner'].includes(activeTab) && (
           <div className="text-netflix-lightgray text-sm p-3 bg-netflix-black/50 rounded w-full">
             This asset will be associated with:{' '}
             <span className="font-bold text-white">
@@ -276,7 +277,7 @@ const AssetUploadForm = ({
                         'How button will appear normally:'}
                     </div>
                     {previewUrl ? (
-                      <div className="bg-black p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px]">
+                      <div className="bg-netflix-dark p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px]">
                         <img 
                           src={previewUrl} 
                           alt="Button Preview" 
@@ -311,7 +312,7 @@ const AssetUploadForm = ({
                     </div>
 
                     <div className="w-full flex justify-center">
-                      <div className="rounded p-4 sm:p-6 relative bg-black flex flex-col items-center max-w-full" style={{ width: "100%" }}>
+                      <div className="rounded p-4 sm:p-6 relative bg-netflix-dark flex flex-col items-center max-w-full" style={{ width: "100%" }}>
                         <div className="mb-4 sm:mb-6 text-center text-white text-base sm:text-lg">Select a Location</div>
                         
                         <div className="flex justify-center items-center w-full max-w-[220px] h-[140px]">

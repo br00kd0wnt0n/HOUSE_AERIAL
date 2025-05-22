@@ -23,7 +23,7 @@ const ButtonAssetGroup = ({ locationName, buttons, onDelete, isSaving }) => {
             <h4 className="font-medium text-white">OFF Button (Normal State)</h4>
             {buttons.OFF ? (
               <div className="relative group">
-                <div className="bg-black p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px] mx-auto sm:mx-0">
+                <div className="bg-netflix-dark p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px] mx-auto sm:mx-0">
                   <img 
                     src={buttons.OFF.accessUrl ? 
                       `${baseBackendUrl}${buttons.OFF.accessUrl}` : ''}
@@ -54,7 +54,7 @@ const ButtonAssetGroup = ({ locationName, buttons, onDelete, isSaving }) => {
             <h4 className="font-medium text-white">ON Button (Hover State)</h4>
             {buttons.ON ? (
               <div className="relative group">
-                <div className="bg-black p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px] mx-auto sm:mx-0">
+                <div className="bg-netflix-dark p-4 rounded flex justify-center items-center w-full max-w-[240px] h-[160px] mx-auto sm:mx-0">
                   <img 
                     src={buttons.ON.accessUrl ? 
                       `${baseBackendUrl}${buttons.ON.accessUrl}` : ''}
@@ -97,7 +97,7 @@ const ButtonAssetGroup = ({ locationName, buttons, onDelete, isSaving }) => {
         {buttons.ON && buttons.OFF && (
           <div className="mt-6">
             <h4 className="font-medium text-white mb-3">Complete Page Preview</h4>
-            <div className="rounded bg-black relative flex flex-col items-center w-full p-4 sm:p-6">
+            <div className="rounded bg-netflix-dark relative flex flex-col items-center w-full p-4 sm:p-6">
               <div className="text-center text-white text-base sm:text-lg mb-4 sm:mb-10">Select a Location</div>
               <div className="flex justify-center items-center w-full max-w-[220px] h-[140px]">
                 <div className="relative cursor-pointer flex justify-center items-center w-full h-full">

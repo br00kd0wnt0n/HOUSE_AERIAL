@@ -13,6 +13,22 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
   const [buttonAssets, setButtonAssets] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadAttempts, setLoadAttempts] = useState(0);
+  const [prevLocationId, setPrevLocationId] = useState(null);
+  
+  // Force re-render when currentLocationId changes by using it in a key
+  // Log current location ID to help with debugging
+  useEffect(() => {
+    logger.info(MODULE, `Current location ID updated: ${currentLocationId}`);
+    
+    // If location has changed, reset button assets to force a refresh
+    if (prevLocationId && prevLocationId !== currentLocationId) {
+      logger.info(MODULE, `Location changed from ${prevLocationId} to ${currentLocationId}, refreshing navigation buttons`);
+      setButtonAssets({});
+      setLoadAttempts(0);
+    }
+    
+    setPrevLocationId(currentLocationId);
+  }, [currentLocationId, prevLocationId]);
   
   // Filter locations to exclude current location
   const availableLocations = useMemo(() => {
@@ -35,7 +51,7 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
       return String(loc._id) !== currentIdStr;
     });
     
-    logger.debug(MODULE, `Filtered to ${filtered.length} available locations (excluding current)`);
+    logger.debug(MODULE, `Filtered to ${filtered.length} available locations (excluding current: ${currentIdStr})`);
     
     return filtered;
   }, [locations, currentLocationId]);
@@ -51,8 +67,8 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
       setIsLoading(true);
       
       try {
-        // Get button assets with type filter
-        const buttonAssets = await dataLayer.getAssetsByType('Button');
+        // Get button assets with type filter - force refresh when location changes
+        const buttonAssets = await dataLayer.getAssetsByType('Button', null, prevLocationId !== currentLocationId);
         
         if (!buttonAssets || !Array.isArray(buttonAssets) || buttonAssets.length === 0) {
           logger.warn(MODULE, 'Failed to load button assets or none found');
@@ -132,7 +148,7 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
     };
     
     loadButtonAssets();
-  }, [availableLocations, loadAttempts]);
+  }, [availableLocations, loadAttempts, currentLocationId, prevLocationId]);
 
   // Retry loading if we have locations but no buttons
   useEffect(() => {

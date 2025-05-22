@@ -4,6 +4,7 @@ import { useExperience } from '../context/ExperienceContext';
 import LoadingScreen from '../components/LoadingScreen/LoadingScreen';
 import logger from '../utils/logger';
 import dataLayer from '../utils/dataLayer';
+import { baseBackendUrl } from '../../utils/api';
 
 /**
  * Home.jsx - Main entry point for the v2 experience
@@ -28,6 +29,7 @@ const Home = () => {
   const [error, setError] = useState(null);
   const [loadingPhase, setLoadingPhase] = useState('initial'); // 'initial', 'locations', 'videos', 'complete'
   const [buttonAssets, setButtonAssets] = useState({});
+  const [bannerAssets, setBannerAssets] = useState({});
   const [hoveredButton, setHoveredButton] = useState(null);
 
   // Handle location loading process
@@ -86,8 +88,44 @@ const Home = () => {
     handleLocationLoad();
   }, [handleLocationLoad]);
   
-  // Fetch button assets from API (similar to v0 menu)
+  // Fetch location banner assets from API
   useEffect(() => {
+    const fetchBannerAssets = async () => {
+      try {
+        // Get all assets and filter locally to ensure we get the right ones
+        const allAssets = await dataLayer.getAssets();
+        
+        if (allAssets && Array.isArray(allAssets)) {
+          // Organize location banners by location ID
+          const banners = {};
+          
+          // Filter and process LocationBanner assets
+          allAssets
+            .filter(asset => asset.type === 'LocationBanner' && asset.location)
+            .forEach(asset => {
+              const locationId = asset.location._id;
+              if (!locationId) return;
+              
+              if (!banners[locationId]) {
+                banners[locationId] = {
+                  url: asset.accessUrl,
+                  name: asset.location.name || 'Unknown Location'
+                };
+              }
+            });
+          
+          setBannerAssets(banners);
+          logger.info(MODULE, `Fetched ${Object.keys(banners).length} location banner assets`);
+        }
+      } catch (err) {
+        logger.error(MODULE, 'Error fetching location banner assets:', err);
+        setError('Failed to load location banner assets.');
+      }
+    };
+    
+    fetchBannerAssets();
+    
+    // Also fetch button assets as fallback
     const fetchButtonAssets = async () => {
       try {
         // Use dataLayer to get button assets
@@ -120,11 +158,10 @@ const Home = () => {
           });
           
           setButtonAssets(buttons);
-          logger.info(MODULE, 'Fetched button assets');
+          logger.info(MODULE, 'Fetched button assets as fallback');
         }
       } catch (err) {
         logger.error(MODULE, 'Error fetching button assets:', err);
-        setError('Failed to load button assets.');
       }
     };
     
@@ -172,20 +209,10 @@ const Home = () => {
   }
 
   return (
-    <div className="flex flex-col justify-between items-center h-screen w-screen bg-black text-white overflow-hidden relative">
-      {/* Menu Header - similar to v0 */}
-      <div className="pt-[5vh] flex flex-col items-center z-10 w-full text-center">
-        <img 
-          src="https://upload.wikimedia.org/wikipedia/commons/7/7a/Logonetflix.png" 
-          alt="Netflix" 
-          className="w-[180px] h-auto mb-2.5"
-        />
-        <h1 className="text-5xl font-bold my-5 drop-shadow-lg">Welcome to Netflix House</h1>
-      </div>
-      
-      {/* Menu Content - similar to v0 */}
+    <div className="flex flex-col justify-between items-center h-screen w-screen bg-gray-200 text-netflix-black overflow-hidden relative">
+      {/* Menu Content - centered vertically in the screen */}
       <div className="flex-1 flex flex-col items-center justify-center z-10 w-full text-center">
-        <h2 className="text-4xl mb-10 drop-shadow-lg">Select a Location</h2>
+        <h2 className="text-4xl mb-10 text-netflix-black font-medium">Select a Location</h2>
         
         {/* Show error message if any */}
         {error && (
@@ -200,29 +227,42 @@ const Home = () => {
             locations.map(location => (
               <button
                 key={location._id}
-                className="w-[200px] h-[120px] bg-transparent border-none p-0 cursor-pointer transition-transform duration-300 block overflow-hidden rounded-none hover:scale-105 focus:outline-none"
+                className="w-[220px] h-[140px] bg-transparent rounded-lg border-2 border-transparent hover:border-netflix-red focus:outline-none focus:border-netflix-red group p-0 cursor-pointer overflow-hidden"
                 onClick={() => handleLocationSelect(location._id)}
                 onMouseEnter={() => setHoveredButton(location._id)}
                 onMouseLeave={() => setHoveredButton(null)}
               >
-                {buttonAssets[location._id] && (
-                  buttonAssets[location._id].normal || buttonAssets[location._id].hover
-                ) ? (
-                  <img 
-                    src={
-                      hoveredButton === location._id && buttonAssets[location._id].hover
-                        ? buttonAssets[location._id].hover 
-                        : buttonAssets[location._id].normal
-                          ? buttonAssets[location._id].normal
-                          : buttonAssets[location._id].hover
-                    } 
-                    alt={location.name} 
-                    className="block w-full h-full object-contain" 
-                  />
-                ) : (
-                  <div className="text-2xl font-bold text-white drop-shadow-lg p-[15px_25px] bg-[rgba(229,9,20,0.8)] rounded">
-                    {location.name}
+                {/* Use Location Banner if available */}
+                {bannerAssets[location._id] ? (
+                  <div className="w-full h-full relative overflow-hidden rounded-lg p-2">
+                    <img 
+                      src={`${baseBackendUrl}${bannerAssets[location._id].url}`}
+                      alt={location.name} 
+                      className="block w-full h-full object-contain transition-all duration-300 shadow-none" 
+                    />
                   </div>
+                ) : (
+                  // Fallback to Button assets if available
+                  buttonAssets[location._id] && (
+                    buttonAssets[location._id].normal || buttonAssets[location._id].hover
+                  ) ? (
+                    <img 
+                      src={
+                        hoveredButton === location._id && buttonAssets[location._id].hover
+                          ? buttonAssets[location._id].hover 
+                          : buttonAssets[location._id].normal
+                            ? buttonAssets[location._id].normal
+                            : buttonAssets[location._id].hover
+                      } 
+                      alt={location.name} 
+                      className="block w-full h-full object-contain transition-all duration-300" 
+                    />
+                  ) : (
+                    // Fallback to text if no assets available
+                    <div className="text-2xl font-bold text-white p-[25px_35px] bg-[rgba(229,9,20,0.8)] rounded-lg transition-all duration-300 h-full flex items-center justify-center shadow-none">
+                      {location.name}
+                    </div>
+                  )
                 )}
               </button>
             ))
@@ -232,16 +272,11 @@ const Home = () => {
         </div>
       </div>
       
-      {/* Menu Footer - similar to v0 */}
-      <div className="pb-[2vh] z-10 w-full text-center">
-        <p className="text-xl opacity-80 m-0">Experience the magic of Netflix in real life</p>
-      </div>
-      
       {/* Service worker status indicator - positioned discreetly */}
       {serviceWorkerReady !== undefined && (
-        <div className="absolute bottom-2 left-2 flex items-center z-10 opacity-50">
+        <div className="absolute bottom-2 left-2 flex items-center z-10 opacity-70">
           <div className={`w-2 h-2 rounded-full mr-1.5 ${serviceWorkerReady ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-600">
             {serviceWorkerReady ? 'Offline Ready' : 'Online Only'}
           </span>
         </div>
