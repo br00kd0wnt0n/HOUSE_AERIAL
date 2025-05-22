@@ -74,8 +74,22 @@ const LocationBanner = ({ locationId }) => {
     loadBannerAsset();
   }, [locationId]);
 
-  // Don't render anything if there's no banner asset or still loading
-  if (isLoading || !bannerAsset) {
+  // Don't render anything if there's still loading
+  if (isLoading) {
+    return null;
+  }
+
+  // Show error message if there was an error
+  if (error) {
+    return (
+      <div className="absolute bottom-12 left-10 z-30 text-red-500">
+        Failed to load location banner
+      </div>
+    );
+  }
+
+  // Don't render anything if there's no banner asset
+  if (!bannerAsset) {
     return null;
   }
 
