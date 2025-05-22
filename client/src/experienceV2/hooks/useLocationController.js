@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import logger from '../utils/logger';
 import dataLayer from '../utils/dataLayer';
 
@@ -16,6 +16,9 @@ export function useLocationController({
   dispatch,
   navigate
 }) {
+  // Add a ref to track when a transition was started to prevent immediate completion
+  const transitionStartTimeRef = useRef(0);
+  
   // Find current location from locations list and update when locationId changes
   useEffect(() => {
     if (!locationId) return;
@@ -26,8 +29,12 @@ export function useLocationController({
         logger.info(MODULE, `Setting current location: ${location.name} (${location._id})`);
         dispatch({ type: 'SET_CURRENT_LOCATION', payload: location });
         
-        // If we're in a location transition, complete it
-        if (state.inLocationTransition && videoStateManagerRef.current) {
+        // If we're in a location transition, complete it, but only if it's not a transition that just started
+        // We use a 500ms buffer to prevent a race condition that completes transitions immediately
+        const now = Date.now();
+        const timeSinceTransitionStart = now - transitionStartTimeRef.current;
+        
+        if (state.inLocationTransition && videoStateManagerRef.current && timeSinceTransitionStart > 500) {
           logger.info(MODULE, `Location ID changed during transition, completing transition to ${location.name}`);
           videoStateManagerRef.current.completeLocationTransition();
           
@@ -39,6 +46,8 @@ export function useLocationController({
             videoStateManagerRef.current.resetPlaylist();
             dispatch({ type: 'RESET_HOTSPOTS' });
           }
+        } else if (state.inLocationTransition && timeSinceTransitionStart <= 500) {
+          logger.info(MODULE, `Skipping immediate transition completion (${timeSinceTransitionStart}ms since start)`);
         }
       } else {
         logger.warn(MODULE, `Location not found: ${locationId}`);
@@ -63,6 +72,9 @@ export function useLocationController({
     }
     
     try {
+      // Record transition start time to prevent immediate completion
+      transitionStartTimeRef.current = Date.now();
+      
       // Get current location info - either from state or look it up using locationId
       let sourceLoc = state.currentLocation;
       
@@ -95,6 +107,9 @@ export function useLocationController({
       // Update destination location state immediately to ensure components have latest data
       dispatch({ type: 'SET_DESTINATION_LOCATION', payload: destinationLoc });
       
+      // Set the location transition state
+      dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: true });
+      
       // Try to find a transition video between these locations
       const transitionVideo = await dataLayer.getTransitionVideo(
         sourceLoc._id, 
@@ -103,27 +118,48 @@ export function useLocationController({
       
       logger.info(MODULE, `Starting transition from ${sourceLoc.name} to ${destinationLoc.name}`);
       
-      // Start location transition
+      // Start location transition in the video state manager
       videoStateManagerRef.current.startLocationTransition(
         sourceLoc,
         destinationLoc,
         transitionVideo
       );
       
-      // If we don't have a transition video, navigate immediately
+      // If we don't have a transition video, the CSS transition will handle it
+      // The navigation will happen after the CSS transition completes
       if (!transitionVideo) {
-        logger.info(MODULE, 'No transition video available, navigating directly');
-        
-        // Only change URL if needed
-        if (destinationLoc._id !== locationId) {
-          // Navigate programmatically to change the URL
-          navigate(`/experience/${destinationLoc._id}`);
-        }
+        logger.info(MODULE, 'No transition video available, using CSS transition');
       }
     } catch (error) {
       logger.error(MODULE, `Error handling location transition: ${error.message}`);
+      
+      // Reset transition state in case of error
+      dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: false });
+      dispatch({ type: 'SET_DESTINATION_LOCATION', payload: null });
     }
-  }, [state.currentLocation, state.inLocationTransition, state.inPlaylistMode, locations, locationId, videoStateManagerRef, dispatch, navigate]);
+  }, [state.currentLocation, state.inLocationTransition, state.inPlaylistMode, locations, locationId, videoStateManagerRef, dispatch]);
+
+  // Handle CSS transition completion - this is called when the CSS transition is done
+  const handleCssTransitionComplete = useCallback(() => {
+    logger.info(MODULE, 'CSS transition completed');
+    
+    // Get the destination location ID
+    const destinationLocationId = state.destinationLocation?._id;
+    if (!destinationLocationId) {
+      logger.error(MODULE, 'Cannot complete transition: no destination location ID');
+      dispatch({ type: 'SET_IN_LOCATION_TRANSITION', payload: false });
+      return;
+    }
+    
+    // Navigate programmatically to change the URL
+    if (destinationLocationId !== locationId) {
+      logger.info(MODULE, `Navigating to destination location: ${destinationLocationId}`);
+      navigate(`/experience/${destinationLocationId}`);
+    } else {
+      // If we're already at the destination (unlikely but possible), just complete the transition
+      dispatch({ type: 'COMPLETE_TRANSITION' });
+    }
+  }, [state.destinationLocation, locationId, navigate, dispatch]);
 
   // Back to home navigation
   const handleBackToHome = useCallback(() => {
@@ -133,6 +169,7 @@ export function useLocationController({
   // Return the location controller API
   return {
     handleLocationButtonClick,
+    handleCssTransitionComplete,
     handleBackToHome
   };
 } 

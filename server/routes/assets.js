@@ -71,6 +71,9 @@ router.get('/:id', assetController.getAsset);
 router.put('/:id', upload.single('file'), assetController.updateAsset);
 router.delete('/:id', assetController.deleteAsset);
 
+// Metadata update route
+router.patch('/:id/metadata', assetController.updateAssetMetadata);
+
 // Serve files - Simplified route
 router.get('/file/:type/:filename', async (req, res) => {
   try {

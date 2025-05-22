@@ -1,11 +1,18 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
 import { FileUpload } from '../../../components/ui/file-upload';
 import { RadioGroup, RadioGroupItem } from '../../../components/ui/radio-group';
 import { Label } from '../../../components/ui/label';
 import { Card, CardContent } from '../../../components/ui/card';
 import { baseBackendUrl } from '../../../utils/api';
+import { useAdmin } from '../../../context/AdminContext';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem
+} from '../../../components/ui/select';
 
 // Add custom CSS for radio buttons
 const customRadioStyles = {
@@ -50,6 +57,9 @@ const AssetUploadForm = ({
   const [previewUrl, setPreviewUrl] = useState('');
   const [oppositeButtonUrl, setOppositeButtonUrl] = useState('');
   
+  // Get locations from AdminContext for transition source/destination selectors
+  const { locations } = useAdmin();
+  
   // Get display name for the current asset type
   const assetTypeName = assetTypeNames[activeTab] || activeTab;
   
@@ -86,6 +96,51 @@ const AssetUploadForm = ({
     setOppositeButtonUrl(getOppositeButtonUrl());
   }, [getOppositeButtonUrl]);
   
+  // Automatically set source location to selected location for transitions
+  useEffect(() => {
+    if (activeTab === 'Transition' && selectedLocation) {
+      setUploadForm(prev => ({
+        ...prev,
+        metadata: {
+          ...prev.metadata,
+          sourceLocation: selectedLocation._id
+        }
+      }));
+    }
+  }, [activeTab, selectedLocation, setUploadForm]);
+  
+  // When file changes, update the name based on filename
+  useEffect(() => {
+    if (uploadForm.fileName) {
+      let name = uploadForm.fileName;
+      
+      // For Button assets, append the state
+      if (activeTab === 'Button' && selectedLocation) {
+        const buttonSuffix = `_Button_${uploadForm.buttonState}`;
+        if (!name.endsWith(buttonSuffix)) {
+          // Remove file extension first
+          name = `${selectedLocation.name}${buttonSuffix}`;
+        }
+      }
+      
+      setUploadForm(prev => ({
+        ...prev,
+        name: name
+      }));
+    }
+  }, [uploadForm.fileName, activeTab, uploadForm.buttonState, selectedLocation, setUploadForm]);
+  
+  // Handle destination location change for transitions
+  const handleDestinationLocationChange = (value) => {
+    setUploadForm(prev => ({
+      ...prev,
+      metadata: {
+        ...prev.metadata,
+        destinationLocation: value
+      }
+    }));
+  };
+  
   return (
     <div className="p-4 sm:p-6 mb-6 bg-netflix-dark rounded-md w-full overflow-hidden">
       <h2 className="text-xl font-bold text-white border-b border-netflix-gray pb-3 mb-6">
@@ -117,28 +172,61 @@ const AssetUploadForm = ({
           </div>
         </div>
         
-        <div className="space-y-2 w-full">
-          <label htmlFor="name" className="block font-bold text-white">
-            Asset Name:
-          </label>
-          <Input
-            type="text"
-            id="name"
-            name="name"
-            value={uploadForm.name}
-            onChange={handleInputChange}
-            disabled={isSaving}
-            required
-            className="bg-netflix-gray border-netflix-gray w-full"
-          />
-        </div>
-        
-        {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button'].includes(activeTab) && (
+        {['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(activeTab) && (
           <div className="text-netflix-lightgray text-sm p-3 bg-netflix-black/50 rounded w-full">
             This asset will be associated with:{' '}
             <span className="font-bold text-white">
               {selectedLocation?.name || 'No location selected'}
             </span>
+          </div>
+        )}
+        
+        {/* Transition destination selector */}
+        {activeTab === 'Transition' && (
+          <div className="space-y-4 mt-4">
+            <div className="text-white font-bold mb-2">Transition Relationship:</div>
+            
+            {/* Source Location Info */}
+            <div className="space-y-2">
+              <div className="flex flex-row items-center gap-2">
+                <label className="block text-sm text-netflix-lightgray">
+                  Source Location (Starting Point):
+                </label>
+                <span className="font-medium text-white">{selectedLocation?.name || 'Select a location first'}</span>
+              </div>
+              <input 
+                type="hidden" 
+                name="sourceLocation" 
+                value={selectedLocation?._id || ''} 
+              />
+            </div>
+            
+            {/* Destination Location Selector */}
+            <div className="space-y-2">
+              <label htmlFor="destinationLocation" className="block text-sm text-netflix-lightgray">
+                Destination Location (Ending Point):
+              </label>
+              <Select
+                value={uploadForm.metadata?.destinationLocation || ''}
+                onValueChange={handleDestinationLocationChange}
+                disabled={isSaving || !locations || locations.length === 0}
+              >
+                <SelectTrigger className="bg-netflix-gray border-netflix-gray w-full">
+                  <SelectValue placeholder="Select destination location" />
+                </SelectTrigger>
+                <SelectContent className="bg-netflix-black border-netflix-gray">
+                  {locations && locations.filter(location => location._id !== selectedLocation?._id).map(location => (
+                    <SelectItem key={`dest-${location._id}`} value={location._id}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="text-xs text-netflix-lightgray mt-1">
+              The transition video will play when navigating from <span className="font-medium">{selectedLocation?.name || 'this location'}</span> to the selected destination location.
+            </div>
           </div>
         )}
         
@@ -243,7 +331,7 @@ const AssetUploadForm = ({
                                   />
                                 </div>
                               </div>
-                            ) : uploadForm.buttonState === 'OFF' && oppositeButtonUrl ? (
+                            ) : (
                               <div className="relative w-full h-full flex justify-center items-center">
                                 <img 
                                   src={previewUrl} 
@@ -257,14 +345,6 @@ const AssetUploadForm = ({
                                     className="object-contain max-w-full max-h-full"
                                   />
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex justify-center items-center h-full">
-                                <img 
-                                  src={previewUrl} 
-                                  alt="Button Preview" 
-                                  className="object-contain max-w-full max-h-full"
-                                />
                               </div>
                             )}
                           </div>
@@ -282,7 +362,8 @@ const AssetUploadForm = ({
         <div className="pt-2">
           <Button 
             type="submit" 
-            disabled={isSaving || !uploadForm.file || !uploadForm.name}
+            disabled={isSaving || !uploadForm.file || 
+              (activeTab === 'Transition' && (!selectedLocation || !uploadForm.metadata?.destinationLocation))}
             className="bg-netflix-red hover:bg-netflix-red/80 w-full sm:w-auto"
           >
             {isSaving ? (

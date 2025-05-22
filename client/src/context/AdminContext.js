@@ -256,11 +256,11 @@ export function AdminProvider({ children }) {
   }, [assets]);
   
   // API functions
-  const uploadAsset = async (file, name, type, locationId = null) => {
+  const uploadAsset = async (file, name, type, locationId = null, metadata = null) => {
     setIsSaving(true);
     setSaveStatus({ success: false, message: 'Uploading asset...' });
     try {
-      console.log(`[AdminContext] Uploading asset: ${name}, type: ${type}, locationId: ${locationId || 'none'}`);
+      console.log(`[AdminContext] Uploading asset: ${name}, type: ${type}, locationId: ${locationId || 'none'}, metadata:`, metadata);
       
       const formData = new FormData();
       formData.append('file', file);
@@ -273,6 +273,12 @@ export function AdminProvider({ children }) {
         formData.append('location', locationId);
       } else {
         console.log(`[AdminContext] No valid location ID to add to form data`);
+      }
+      
+      // Add metadata if provided
+      if (metadata && typeof metadata === 'object') {
+        console.log(`[AdminContext] Adding metadata to form data:`, metadata);
+        formData.append('metadata', JSON.stringify(metadata));
       }
       
       // Log formData entries for debugging

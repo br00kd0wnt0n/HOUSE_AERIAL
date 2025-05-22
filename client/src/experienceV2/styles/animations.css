@@ -1,0 +1,85 @@
+/* animations.css - Custom animations for the Experience V2 application */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-duration, 330ms) ease-in forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut var(--transition-duration, 330ms) ease-out forwards;
+}
+
+/* Slide transitions */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight var(--transition-duration, 330ms) ease-out forwards;
+}
+
+.animate-slide-out-left {
+  animation: slideOutLeft var(--transition-duration, 330ms) ease-in forwards;
+}
+
+/* Zoom transitions */
+@keyframes zoomIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes zoomOut {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+.animate-zoom-in {
+  animation: zoomIn var(--transition-duration, 330ms) ease-out forwards;
+}
+
+.animate-zoom-out {
+  animation: zoomOut var(--transition-duration, 330ms) ease-in forwards;
+}

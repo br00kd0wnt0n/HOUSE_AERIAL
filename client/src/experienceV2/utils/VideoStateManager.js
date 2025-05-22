@@ -438,10 +438,11 @@ class VideoStateManager {
       this.onLoadVideo(transitionVideoObject);
       return true;
     } else {
-      logger.info(MODULE, 'No transition video available, performing direct location switch');
+      logger.info(MODULE, 'No transition video available, using CSS transition');
       
-      // Complete the transition immediately
-      this.completeLocationTransition();
+      // In this case, we DON'T immediately complete the transition.
+      // Instead, we let the CSS transition component handle it.
+      // The transition will be completed when the CSS transition calls completeLocationTransition.
       return true;
     }
   }

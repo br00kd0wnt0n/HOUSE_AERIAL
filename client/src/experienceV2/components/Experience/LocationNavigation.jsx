@@ -11,6 +11,8 @@ import dataLayer from '../../utils/dataLayer';
 const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }) => {
   const MODULE = 'LocationNavigation';
   const [buttonAssets, setButtonAssets] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadAttempts, setLoadAttempts] = useState(0);
   
   // Filter locations to exclude current location
   const availableLocations = useMemo(() => {
@@ -41,14 +43,27 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
   // Fetch button assets for available locations
   useEffect(() => {
     const loadButtonAssets = async () => {
-      if (!availableLocations.length) return;
+      if (!availableLocations.length) {
+        setIsLoading(false);
+        return;
+      }
 
+      setIsLoading(true);
+      
       try {
         // Get button assets with type filter
         const buttonAssets = await dataLayer.getAssetsByType('Button');
         
-        if (!buttonAssets || !Array.isArray(buttonAssets)) {
-          logger.warn(MODULE, 'Failed to load button assets');
+        if (!buttonAssets || !Array.isArray(buttonAssets) || buttonAssets.length === 0) {
+          logger.warn(MODULE, 'Failed to load button assets or none found');
+          setIsLoading(false);
+          
+          // If this is our first few attempts, try again in a moment
+          if (loadAttempts < 3) {
+            setTimeout(() => {
+              setLoadAttempts(prev => prev + 1);
+            }, 1000);
+          }
           return;
         }
         
@@ -101,13 +116,39 @@ const LocationNavigation = ({ locations, currentLocationId, onClick, debugMode }
         }
         
         setButtonAssets(assetsMap);
+        setIsLoading(false);
+        logger.info(MODULE, `Successfully loaded button assets for ${Object.keys(assetsMap).length} locations`);
       } catch (error) {
         logger.error(MODULE, 'Error loading button assets:', error);
+        setIsLoading(false);
+        
+        // If this is our first few attempts, try again in a moment
+        if (loadAttempts < 3) {
+          setTimeout(() => {
+            setLoadAttempts(prev => prev + 1);
+          }, 1000);
+        }
       }
     };
     
     loadButtonAssets();
-  }, [availableLocations]);
+  }, [availableLocations, loadAttempts]);
+
+  // Retry loading if we have locations but no buttons
+  useEffect(() => {
+    if (availableLocations.length > 0 && 
+        Object.keys(buttonAssets).length === 0 && 
+        !isLoading && 
+        loadAttempts < 3) {
+      // Schedule another attempt
+      const timer = setTimeout(() => {
+        logger.info(MODULE, `Retrying button asset load (attempt ${loadAttempts + 1})`);
+        setLoadAttempts(prev => prev + 1);
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [availableLocations.length, buttonAssets, isLoading, loadAttempts]);
 
   // Don't render anything if no locations
   if (availableLocations.length === 0) {
