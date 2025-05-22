@@ -58,9 +58,10 @@ const Assets = () => {
     { id: 'FloorLevel', label: 'Floor Level Videos' },
     { id: 'ZoomOut', label: 'Zoom-Out Videos' },
     { id: 'Transition', label: 'Transition Videos' },
-    { id: 'Button', label: 'Buttons' },
+    { id: 'Button', label: 'Location Buttons' },
     { id: 'MapPin', label: 'Map Pins' },
-    { id: 'UIElement', label: 'UI Elements' }
+    { id: 'UIElement', label: 'UI Elements' },
+    { id: 'LocationBanner', label: 'Location Banner' }
   ], []);
   
   // Define current asset type
@@ -98,7 +99,7 @@ const Assets = () => {
     console.log(`Filtering assets for type ${activeTab}:`, assetsForType);
     
     // For location-specific assets, filter by selected location
-    if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(activeTab)) {
+    if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition', 'LocationBanner'].includes(activeTab)) {
       if (!selectedLocation) {
         console.log('No location selected for location-specific assets');
         return []; // Return empty array if no location selected for location-specific assets
@@ -248,7 +249,7 @@ const Assets = () => {
       console.log(`[Assets] Using metadata for transition:`, metadata);
     }
     // For other location-specific assets, we need a selected location
-    else if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition'].includes(uploadForm.type)) {
+    else if (['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition', 'LocationBanner'].includes(uploadForm.type)) {
       if (!selectedLocation) {
         setError(new Error('Please select a location for this asset type'));
         return;

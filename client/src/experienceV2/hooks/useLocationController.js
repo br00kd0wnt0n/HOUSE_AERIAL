@@ -20,6 +20,17 @@ export function useLocationController({
   // Add a ref to track when a transition was started to prevent immediate completion
   const transitionStartTimeRef = useRef(0);
   
+  // Add a ref to track previous locationId for better logging
+  const prevLocationIdRef = useRef(null);
+  
+  // Log when locationId changes
+  useEffect(() => {
+    if (locationId !== prevLocationIdRef.current) {
+      logger.info(MODULE, `LocationId changed from ${prevLocationIdRef.current} to ${locationId}`);
+      prevLocationIdRef.current = locationId;
+    }
+  }, [locationId]);
+  
   // Find current location from locations list and update when locationId changes
   useEffect(() => {
     if (!locationId) return;
@@ -73,7 +84,7 @@ export function useLocationController({
       destinationLoc._id
     );
     
-    logger.info(MODULE, `Starting transition from ${sourceLoc.name} to ${destinationLoc.name}`);
+    logger.info(MODULE, `Starting transition from ${sourceLoc.name} (${sourceLoc._id}) to ${destinationLoc.name} (${destinationLoc._id})`);
     
     // Start location transition in the video state manager
     videoStateManagerRef.current.startLocationTransition(
@@ -194,10 +205,11 @@ export function useLocationController({
     
     // Navigate programmatically to change the URL
     if (destinationLocationId !== locationId) {
-      logger.info(MODULE, `Navigating to destination location: ${destinationLocationId}`);
+      logger.info(MODULE, `Navigating to destination location: ${destinationLocationId} (current: ${locationId})`);
       navigate(`/experience/${destinationLocationId}`);
     } else {
       // If we're already at the destination (unlikely but possible), just complete the transition
+      logger.info(MODULE, `Already at destination location: ${destinationLocationId}, completing transition`);
       dispatch({ type: 'COMPLETE_TRANSITION' });
     }
   }, [state.destinationLocation, locationId, navigate, dispatch]);

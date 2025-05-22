@@ -7,6 +7,7 @@ import InfoPanel from '../components/Hotspot/InfoPanel';
 import LocationNavigation from '../components/Experience/LocationNavigation';
 import TransitionEffect from '../components/Experience/TransitionEffect';
 import FadeToBlackEffect from '../components/Experience/FadeToBlackEffect';
+import LocationBanner from '../components/Experience/LocationBanner';
 import logger from '../utils/logger';
 import { useVideoController } from '../hooks/useVideoController';
 import { useHotspotController } from '../hooks/useHotspotController';
@@ -299,7 +300,15 @@ const Experience = () => {
           currentLocationId={state.currentLocation?._id || locationId}
           onClick={locationController.handleLocationButtonClick}
           debugMode={debugMode}
-          key={`location-nav-${state.currentLocation?._id || locationId}`}
+          key={`location-nav-${state.currentLocation?._id || locationId}-${Date.now()}`}
+        />
+      )}
+      
+      {/* Location Banner - show in aerial view */}
+      {state.currentVideo === 'aerial' && (
+        <LocationBanner 
+          locationId={state.currentLocation?._id || locationId} 
+          key={`location-banner-${state.currentLocation?._id || locationId}`}
         />
       )}
       

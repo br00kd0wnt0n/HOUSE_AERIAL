@@ -10,7 +10,7 @@ const AssetSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition', 'Button', 'MapPin', 'UIElement']
+    enum: ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Transition', 'Button', 'MapPin', 'UIElement', 'LocationBanner']
   },
   filePath: {
     type: String,
@@ -38,7 +38,7 @@ const AssetSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Location',
     required: function() {
-      return ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut'].includes(this.type);
+      return ['AERIAL', 'DiveIn', 'FloorLevel', 'ZoomOut', 'Button', 'MapPin', 'Transition', 'LocationBanner'].includes(this.type);
     }
   },
   isActive: {
